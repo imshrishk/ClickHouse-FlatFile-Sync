@@ -1,0 +1,50 @@
+# Server configuration
+server:
+  port: 8080
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,application/javascript,application/json
+  servlet:
+    context-path: /api
+
+# Spring configuration
+spring:
+  application:
+    name: ClickHouse-FlatFile-Sync
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 2GB
+      max-request-size: 2GB
+
+# ClickHouse default connection settings
+clickhouse:
+  default:
+    host: localhost
+    port: 8123
+    protocol: http
+    database: default
+    username: default
+    password: ""
+    socket-timeout: 300000
+    connect-timeout: 10000
+
+# File storage configuration
+file:
+  upload:
+    temp-dir: ./temp
+    max-size: 2GB
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    org.example.bidirectional: INFO
+    org.springframework: INFO
+  file:
+    name: ./logs/application.log
+    max-size: 10MB
+    max-history: 10

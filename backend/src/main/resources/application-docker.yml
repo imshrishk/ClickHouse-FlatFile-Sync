@@ -1,0 +1,23 @@
+# Docker-specific configuration
+
+# Use environment variables for ClickHouse connection in Docker
+clickhouse:
+  default:
+    host: ${CLICKHOUSE_DEFAULT_HOST:clickhouse}
+    port: ${CLICKHOUSE_DEFAULT_PORT:8123}
+    protocol: http
+    database: ${CLICKHOUSE_DEFAULT_DATABASE:default}
+    username: ${CLICKHOUSE_DEFAULT_USERNAME:default}
+    password: ${CLICKHOUSE_DEFAULT_PASSWORD:}
+
+# File upload directory inside Docker container
+file:
+  upload:
+    temp-dir: /app/temp
+
+# Logging to stdout for containerized environment
+logging:
+  file:
+    name: 
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"

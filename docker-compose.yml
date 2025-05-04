@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - CLICKHOUSE_DEFAULT_HOST=clickhouse
+      - CLICKHOUSE_DEFAULT_PORT=8123
+      - CLICKHOUSE_DEFAULT_DATABASE=default
+      - CLICKHOUSE_DEFAULT_USERNAME=default
+      - CLICKHOUSE_DEFAULT_PASSWORD=
+    volumes:
+      - app_temp:/app/temp
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - VITE_SPRING_BOOT_URL=http://localhost:8080
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+  app_temp:
