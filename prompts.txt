@@ -1,0 +1,33 @@
+I am making a configuration page for connecting to ClickHouse. It should allow the user to the below
+Enhnace my code so that it works
+Select protocol (http/https) from a dropdown.
+Input host, port, username, and either password or JWT token (with a toggle option).
+This configuration should remain same and must be used for all future requests unless changed.
+(Also tell me what I am doing wrong with the following logs so that I can fix and add the above)
+
+this should be the upload section as below
+After file selection, allow preview of first 100 rows with user-specified delimiter.(done but enhance it)
+Show parsed column names with checkboxes to select columns for upload. Must be for multiple
+show a name input and dropdowns to choose data types
+Upload progress bar should display:
+blue progress bar above the “Upload to ClickHouse” button with percentage uploaded and size
+After upload completes show me specifically how much was added.
+
+User can selet table from dropdown, like enums
+Fetches and displays columns (with checkboxes as was previously used)
+Allows user to input a custom delimiter (like , / \ | ` ~ or any thing symbol only).
+“Use multiple tables” toggle opens table join builder:
+For each join user can select table, join type (INNER, LEFT, etc.), and join conditions using column dropdowns.
+Add preview button that shows results in a modal.
+Download should call /api/clickhouse/download and show a progress bar (like upload).
+Show Content-Length size and percentage clearly.
+
+I have made basic UI, enhance it. Give me plans on how you want to do it and I will select from it.
+Note that all the plans must be modern and the list of plans must be over 3. Also state the components you
+plan to use. Preferred is shadCN.
+
+Enhance the code with proper and detailed comments so anyone can easily understand what is going on.
+Make README and .gitignore for it too.
+
+Add additional tests to it than the one present. Also validate if the existing tests are good. make 
+sure to account for edge cases too
