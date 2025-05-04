@@ -10,11 +10,6 @@
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev/)
 [![ClickHouse](https://img.shields.io/badge/ClickHouse-Compatible-yellow.svg)](https://clickhouse.com/)
 
-[Features](#key-features) •
-[Installation](#installation) •
-[Usage](#usage) •
-[Documentation](#documentation)
-
 </div>
 
 ## 📋 Overview
