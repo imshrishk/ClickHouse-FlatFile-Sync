@@ -688,4 +688,60 @@ public class ClickHouseService {
     public Client getClient() {
         return client;
     }
+
+    /**
+     * Executes a SQL query and writes the result directly to an output stream.
+     * This is useful for streaming large result sets without loading them into memory.
+     * 
+     * @param sql The SQL query to execute
+     * @param outputStream The output stream to write to
+     * @param format The format to use (e.g., CSV, CSVWithNames)
+     * @throws Exception If query execution fails
+     */
+    public void executeQueryToOutputStream(String sql, java.io.OutputStream outputStream, String format) throws Exception {
+        logger.debug("Executing query with {} format: {}", format, sql);
+        
+        // Use CSVWithNames by default if not specified
+        ClickHouseFormat clickHouseFormat;
+        if (format == null || format.trim().isEmpty()) {
+            clickHouseFormat = ClickHouseFormat.CSVWithNames;
+        } else {
+            try {
+                clickHouseFormat = ClickHouseFormat.valueOf(format);
+            } catch (IllegalArgumentException e) {
+                logger.warn("Invalid format specified '{}', falling back to CSVWithNames", format);
+                clickHouseFormat = ClickHouseFormat.CSVWithNames;
+            }
+        }
+        
+        QuerySettings settings = new QuerySettings().setFormat(clickHouseFormat);
+        
+        try {
+            Future<QueryResponse> response = client.query(sql, settings);
+            
+            try (QueryResponse qr = response.get();
+                 java.io.InputStream inputStream = qr.getInputStream()) {
+                
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                long totalBytes = 0;
+                
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                    totalBytes += bytesRead;
+                    
+                    // Log progress for large result sets
+                    if (totalBytes % (50 * 8192) == 0) {
+                        logger.debug("Transferred approximately {} MB of data", totalBytes / (1024 * 1024));
+                    }
+                }
+                
+                outputStream.flush();
+                logger.info("Successfully transferred {} MB of data", totalBytes / (1024 * 1024));
+            }
+        } catch (Exception e) {
+            logger.error("Failed to execute query: {}", e.getMessage(), e);
+            throw new Exception("Failed to execute query: " + e.getMessage(), e);
+        }
+    }
 }

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .result {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            word-wrap: break-word;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        h2 {
+            margin-top: 30px;
+        }
+        a {
+            display: block;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>URL Path Test Page</h1>
+    
+    <div>
+        <h2>Direct Links (iframe method)</h2>
+        <button onclick="downloadUsingIframe('/api/direct-download')">Download using iframe</button>
+        <div id="iframeResult" class="result">Results will appear here...</div>
+    </div>
+    
+    <div>
+        <h2>Direct Links (window.location method)</h2>
+        <button onclick="testDirectLink('/api/direct-download')">Test direct link</button>
+        <div id="directResult" class="result">Results will appear here...</div>
+    </div>
+    
+    <div>
+        <h2>Direct Download Links (a href method)</h2>
+        <div id="linkContainer"></div>
+    </div>
+    
+    <script>
+        // Display result in a div
+        function displayResult(elementId, message) {
+            document.getElementById(elementId).textContent = message;
+        }
+        
+        // Test download using iframe
+        function downloadUsingIframe(path) {
+            try {
+                const fullUrl = window.location.origin + path;
+                displayResult('iframeResult', `Testing iframe download from ${fullUrl}...`);
+                
+                // Create hidden iframe
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.name = 'downloadFrame';
+                document.body.appendChild(iframe);
+                
+                // Set iframe source to download URL
+                iframe.src = fullUrl;
+                
+                setTimeout(() => {
+                    // Clean up iframe after download starts
+                    document.body.removeChild(iframe);
+                    displayResult('iframeResult', `Download request sent to ${fullUrl}. Check downloads folder.`);
+                }, 2000);
+            } catch (error) {
+                displayResult('iframeResult', `Error: ${error.message}`);
+            }
+        }
+        
+        // Test window.location redirect
+        function testDirectLink(path) {
+            try {
+                const fullUrl = window.location.origin + path;
+                displayResult('directResult', `Will redirect to ${fullUrl} in 3 seconds...`);
+                
+                // Wait 3 seconds then redirect
+                setTimeout(() => {
+                    window.location.href = fullUrl;
+                }, 3000);
+            } catch (error) {
+                displayResult('directResult', `Error: ${error.message}`);
+            }
+        }
+        
+        // Create direct links when page loads
+        window.onload = function() {
+            const linkContainer = document.getElementById('linkContainer');
+            const origin = window.location.origin;
+            
+            const links = [
+                { path: '/api/direct-download', name: 'Direct Download Endpoint' },
+                { path: '/api/clickhouse/simple-download', name: 'ClickHouse Simple Download' },
+                { path: '/api/env-test', name: 'Environment Info' }
+            ];
+            
+            links.forEach(link => {
+                const fullUrl = origin + link.path;
+                
+                // Create link element
+                const a = document.createElement('a');
+                a.href = fullUrl;
+                a.target = '_blank';
+                a.textContent = `${link.name} (${fullUrl})`;
+                
+                // Add to container
+                linkContainer.appendChild(a);
+            });
+        };
+    </script>
+</body>
+</html>

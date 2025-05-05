@@ -336,6 +336,32 @@ The application follows a modern microservices architecture:
 - Manually specify column types instead of auto-detection
 - Adjust type inference settings in the UI
 
+#### Download Failed: Network Error
+
+**Problem**: Getting "Download Failed: Network Error" when trying to download data from ClickHouse.
+
+**Solution**:
+- This issue is typically caused by improper handling of large file downloads or CORS configuration issues
+- Ensure Nginx is configured with proper timeout settings and disabled buffering for large downloads:
+  ```nginx
+  # Disable buffering for large responses
+  proxy_buffering off;
+  proxy_request_buffering off;
+  
+  # Increase timeouts for large operations
+  proxy_connect_timeout 600s;
+  proxy_send_timeout 600s;
+  proxy_read_timeout 600s;
+  ```
+- Add the Access-Control-Expose-Headers to include 'Content-Disposition' and 'Content-Length':
+  ```nginx
+  add_header 'Access-Control-Expose-Headers' 'Content-Disposition,Content-Length,X-Line-Count' always;
+  ```
+- For more reliable downloads, prefer using the Fetch API over Axios in frontend code
+- Use direct streaming from the backend to the client rather than creating temporary files
+- If still facing issues, check network monitor in browser developer tools for specific error codes
+- In Docker environments, ensure sufficient memory is allocated to containers
+
 ### Logging
 
 To enable debug logging, add the following to your `application.yml`:

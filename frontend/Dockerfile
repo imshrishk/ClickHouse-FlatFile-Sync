@@ -34,6 +34,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Copy Nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Copy test.html for fallback testing
+COPY client/public/test.html /usr/share/nginx/html/test.html
+
 # For debugging - list files in html directory
 RUN ls -la /usr/share/nginx/html
 

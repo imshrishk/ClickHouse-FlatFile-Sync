@@ -27,7 +27,9 @@ try {
     # Try querying with JSON output
     Write-Host "Testing JSON output format..." -ForegroundColor Yellow
     $jsonResponse = Invoke-WebRequest -Uri $url -Method POST -Body "SELECT * FROM uk_price_paid LIMIT 1 FORMAT JSON" -UseBasicParsing
-    Write-Host "JSON format query successful!" -ForegroundColor Green
+    # Display a preview of the JSON response content
+    $jsonPreview = $jsonResponse.Content.Substring(0, [Math]::Min(100, $jsonResponse.Content.Length)) + "..."
+    Write-Host "JSON format query successful! Preview: $jsonPreview" -ForegroundColor Green
     
     Write-Host "All connection tests PASSED!" -ForegroundColor Green
 }

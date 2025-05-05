@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClickHouse Download Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1, h2 {
+      color: #333;
+    }
+    button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 10px 5px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 20px;
+      margin-bottom: 20px;
+      background-color: #f9f9f9;
+    }
+    #message {
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .success {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+    .error {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+    .url-display {
+      margin-top: 5px;
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>ClickHouse Download Test Page</h1>
+  
+  <div class="card">
+    <h2>Direct Download Links</h2>
+    <p>Various paths to test download functionality</p>
+    
+    <div>
+      <a href="/api/direct-download" target="_blank" id="directLink">
+        <button>Simple Direct Download</button>
+      </a>
+      <div class="url-display" id="directLinkUrl"></div>
+    </div>
+    
+    <div>
+      <a href="/api/clickhouse/simple-download" target="_blank" id="clickhouseLink">
+        <button>ClickHouse Simple Download</button>
+      </a>
+      <div class="url-display" id="clickhouseLinkUrl"></div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>JavaScript Download</h2>
+    <p>This uses JavaScript to download the file</p>
+    <button id="jsDownloadBtn">Download with JavaScript</button>
+    <div id="message"></div>
+  </div>
+  
+  <script>
+    const messageElement = document.getElementById('message');
+    const jsDownloadBtn = document.getElementById('jsDownloadBtn');
+    const directLink = document.getElementById('directLink');
+    const clickhouseLink = document.getElementById('clickhouseLink');
+    const directLinkUrl = document.getElementById('directLinkUrl');
+    const clickhouseLinkUrl = document.getElementById('clickhouseLinkUrl');
+    
+    // Update links to use absolute paths
+    function updateLinks() {
+      const origin = window.location.origin;
+      
+      // Update direct download link
+      const directPath = '/api/direct-download';
+      directLink.href = origin + directPath;
+      directLinkUrl.textContent = `URL: ${origin}${directPath}`;
+      
+      // Update clickhouse download link
+      const clickhousePath = '/api/clickhouse/simple-download';
+      clickhouseLink.href = origin + clickhousePath;
+      clickhouseLinkUrl.textContent = `URL: ${origin}${clickhousePath}`;
+    }
+    
+    // Set message with appropriate style
+    function setMessage(text, isError = false) {
+      messageElement.textContent = text;
+      messageElement.className = isError ? 'error' : 'success';
+    }
+    
+    // JavaScript download function
+    async function downloadWithJS() {
+      const url = window.location.origin + '/api/direct-download';
+      setMessage(`Starting download from ${url}...`);
+      
+      try {
+        // Create an iframe to handle the download
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        
+        // Set the iframe source to the download URL
+        iframe.src = url;
+        
+        // Set a timeout to check if download started
+        setTimeout(() => {
+          // Remove the iframe after a delay
+          document.body.removeChild(iframe);
+          setMessage('Download request sent. Check your downloads folder.');
+        }, 2000);
+      } catch (err) {
+        console.error('Download error:', err);
+        setMessage(`Error: ${err.message}`, true);
+      }
+    }
+    
+    // Initialize the page
+    window.onload = function() {
+      updateLinks();
+      
+      // Add event listener for JavaScript download
+      jsDownloadBtn.addEventListener('click', downloadWithJS);
+    };
+  </script>
+</body>
+</html>

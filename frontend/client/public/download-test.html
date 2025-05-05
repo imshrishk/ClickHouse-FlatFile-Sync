@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Download Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <h1>Direct Download Test</h1>
+    
+    <div class="card">
+        <h2>Direct Download Link</h2>
+        <p>Tests the direct download endpoint at the API root level</p>
+        <a href="/api/direct-download" id="directLink" target="_blank">
+            <button>Download via Direct Link</button>
+        </a>
+        <div id="directLinkPath"></div>
+    </div>
+    
+    <div class="card">
+        <h2>JavaScript Download</h2>
+        <p>Uses JavaScript to trigger the download</p>
+        <button id="jsDownloadBtn">JavaScript Download</button>
+        <div id="status"></div>
+    </div>
+    
+    <div class="card">
+        <h2>Iframe Download</h2>
+        <p>Uses an iframe to trigger the download (often works better)</p>
+        <button id="iframeDownloadBtn">Iframe Download</button>
+    </div>
+    
+    <script>
+        // Update on page load
+        window.onload = function() {
+            const origin = window.location.origin;
+            const directPath = '/api/direct-download';
+            
+            // Update direct link
+            const directLink = document.getElementById('directLink');
+            directLink.href = origin + directPath;
+            
+            // Display the path
+            document.getElementById('directLinkPath').textContent = `URL: ${origin}${directPath}`;
+            
+            // Set up JavaScript download
+            document.getElementById('jsDownloadBtn').addEventListener('click', function() {
+                const url = origin + directPath;
+                const status = document.getElementById('status');
+                status.textContent = `Initiating download from ${url}`;
+                status.className = '';
+                
+                fetch(url)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'direct_download.csv';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        status.textContent = 'Download successful!';
+                        status.className = 'success';
+                    })
+                    .catch(err => {
+                        console.error('Download error:', err);
+                        status.textContent = `Error: ${err.message}`;
+                        status.className = 'error';
+                    });
+            });
+            
+            // Set up iframe download
+            document.getElementById('iframeDownloadBtn').addEventListener('click', function() {
+                const url = origin + directPath;
+                
+                // Create an iframe
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+                
+                // Remove the iframe after a delay
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 2000);
+            });
+        };
+    </script>
+</body>
+</html>

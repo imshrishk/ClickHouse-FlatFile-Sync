@@ -135,46 +135,120 @@ export async function downloadData(
       configCopy.connection.jwt = undefined;
     }
 
-    const response = await axios.post(`${SPRING_BOOT_URL}/api/clickhouse/download`, configCopy, {
-      responseType: 'blob',
-      withCredentials: true,
-      onDownloadProgress: (event: AxiosProgressEvent) => {
-        if (event.lengthComputable && event.total) {
-          setFileSize?.(event.total);
-          onProgress?.({
-            loaded: event.loaded,
-            total: event.total,
-            percentage: Math.round((event.loaded / event.total) * 100),
-          });
-        }
+    // Log the request being made
+    console.log('Sending download request to:', `${SPRING_BOOT_URL}/clickhouse/download`);
+    console.log('Request configuration:', JSON.stringify(configCopy));
+
+    // Use fetch API for better handling of binary data
+    // SPRING_BOOT_URL already contains '/api' if needed
+    const requestUrl = `${SPRING_BOOT_URL}/clickhouse/download`;
+    console.log('Full URL for fetch request:', requestUrl);
+    
+    try {
+      const response = await fetch(requestUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': '*/*',
+        },
+        body: JSON.stringify(configCopy),
+        credentials: 'include',
+      });
+  
+      console.log('Response status:', response.status);
+      
+      // Log headers for debugging
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      console.log('Response headers:', responseHeaders);
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        throw new Error(`Server error: ${response.status} ${response.statusText}. Details: ${errorText || 'No details available'}`);
       }
-    });
-
-    const contentDisposition = response.headers['content-disposition'];
-    const contentType = response.headers['content-type'] || 'application/octet-stream';
-    const contentLength = response.headers['content-length'];
-    const lineCount = response.headers['x-line-count'];
-
-    const filename = contentDisposition
-      ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
-      : `clickhouse_data_${new Date().toISOString()}.csv`;
-
-    const blob = new Blob([response.data], { type: contentType });
-    const fileSize = blob.size;
-
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-
-    // Cleanup
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-
-    return { size: fileSize, filename: filename, lines: lineCount };
+  
+      // Get headers
+      const contentDisposition = response.headers.get('content-disposition');
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      const contentLength = response.headers.get('content-length');
+      const lineCount = response.headers.get('x-line-count');
+  
+      console.log('Download headers:', {
+        contentDisposition,
+        contentType,
+        contentLength,
+        lineCount
+      });
+  
+      // Parse filename from Content-Disposition header
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+        : `clickhouse_data_${new Date().toISOString()}.csv`;
+  
+      // Get response data as blob
+      const blob = await response.blob();
+      const fileSize = blob.size;
+  
+      console.log(`Downloaded blob size: ${fileSize} bytes, type: ${blob.type}`);
+  
+      if (fileSize === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+      
+      // If setFileSize callback is provided, use it
+      if (setFileSize) {
+        setFileSize(fileSize);
+      }
+  
+      // Create download link and trigger download
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+  
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+  
+      return { 
+        size: fileSize, 
+        filename: filename, 
+        lines: lineCount ? parseInt(lineCount, 10) : 0 
+      };
+    } catch (fetchError) {
+      console.error('Fetch error details:', fetchError);
+      
+      // Fall back to direct download approach if fetch fails
+      try {
+        console.log('Attempting fallback direct download method...');
+        
+        // Use an absolute URL with the browser's hostname, not the internal backend URL
+        // This ensures the download URL is accessible from the browser
+        const browserBaseUrl = window.location.origin;
+        // Direct path to the API endpoint (we know the API is at /api/...)
+        const downloadPath = '/api/direct-download';
+        const fallbackUrl = browserBaseUrl + downloadPath;
+        
+        console.log('Using absolute fallback URL:', fallbackUrl);
+        window.location.href = fallbackUrl;
+        
+        return {
+          size: 0,
+          filename: 'clickhouse_data.csv',
+          lines: 0
+        };
+      } catch (fallbackError) {
+        console.error('Fallback download also failed:', fallbackError);
+        throw new Error('Download failed with both methods. Please try again later.');
+      }
+    }
   } catch (error) {
+    console.error('Download function error:', error);
     throw error;
   }
 }
