@@ -13,7 +13,8 @@
 [Features](#key-features) •
 [Installation](#installation) •
 [Usage](#usage) •
-[Documentation](#documentation)
+[Documentation](#documentation) •
+[Troubleshooting](#troubleshooting)
 
 </div>
 
@@ -92,14 +93,17 @@ The easiest way to get started is using our Docker Compose setup:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ClickHouse-FlatFile-Sync.git
+git clone https://github.com/imshrishk/ClickHouse-FlatFile-Sync.git
 cd ClickHouse-FlatFile-Sync
 
-# Start the application (backend + frontend)
+# Start the application (backend + frontend + clickhouse)
 docker-compose up -d
 ```
 
-This will start the application on http://localhost:8080.
+This will start the application with the following services:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8080/api
+- ClickHouse: http://localhost:8123
 
 ### Option 2: Manual Installation
 
@@ -107,7 +111,7 @@ This will start the application on http://localhost:8080.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ClickHouse-FlatFile-Sync.git
+git clone https://github.com/imshrishk/ClickHouse-FlatFile-Sync.git
 cd ClickHouse-FlatFile-Sync/backend
 
 # Build the application
@@ -142,6 +146,8 @@ Create an `application.yml` file in the `backend/src/main/resources` directory o
 # Server configuration
 server:
   port: 8080
+  servlet:
+    context-path: /api
   compression:
     enabled: true
     mime-types: text/html,text/css,application/javascript,application/json
@@ -169,6 +175,27 @@ Or via environment variables:
 export SERVER_PORT=8080
 export CLICKHOUSE_DEFAULT_HOST=localhost
 export CLICKHOUSE_DEFAULT_PORT=8123
+export SPRING_PROFILES_ACTIVE=docker
+```
+
+#### Docker Environment Variables
+
+When using Docker, you can configure the application via environment variables in the docker-compose.yml file:
+
+```yaml
+backend:
+  environment:
+    - SPRING_PROFILES_ACTIVE=docker
+    - CLICKHOUSE_DEFAULT_HOST=clickhouse
+    - CLICKHOUSE_DEFAULT_PORT=8123
+    - CLICKHOUSE_DEFAULT_USERNAME=default
+    - CLICKHOUSE_DEFAULT_PASSWORD=clickhouse
+    - CONFIG_FRONTEND=http://frontend:80, http://localhost:5173
+    - JAVA_OPTS=-Dserver.port=8080 -Dserver.servlet.context-path=/api
+
+frontend:
+  environment:
+    - VITE_SPRING_BOOT_URL=http://backend:8080/api
 ```
 
 ## 📝 Usage
@@ -232,13 +259,16 @@ The backend provides a RESTful API that can be consumed programmatically:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/clickhouse/connect` | POST | Establish connection to ClickHouse |
-| `/api/clickhouse/tables` | GET | List available tables |
-| `/api/clickhouse/columns` | GET | Get columns for a table |
-| `/api/clickhouse/query` | POST | Execute a custom query |
-| `/api/file/upload` | POST | Upload a file for processing |
-| `/api/ingest/csv-to-clickhouse` | POST | Import CSV to ClickHouse |
-| `/api/ingest/clickhouse-to-csv` | POST | Export ClickHouse to CSV |
+| `/api/clickhouse/test-connection` | POST | Test connection to ClickHouse |
+| `/api/clickhouse/tables` | POST | List available tables |
+| `/api/clickhouse/columns` | POST | Get columns for a table |
+| `/api/clickhouse/query-selected-columns` | POST | Query selected columns with optional JOINs |
+| `/api/clickhouse/preview-csv` | POST | Preview CSV file contents |
+| `/api/clickhouse/upload` | POST | Upload CSV to ClickHouse |
+| `/api/clickhouse/download` | POST | Export ClickHouse data to CSV |
+| `/api/clickhouse/types` | POST | Get available data types |
+
+All API endpoints are accessible via the `/api` context path (e.g., `http://localhost:8080/api/clickhouse/test-connection`).
 
 ### Architecture
 
@@ -281,6 +311,18 @@ The application follows a modern microservices architecture:
 - Check firewall settings
 - Ensure ClickHouse server is running
 - Check network connectivity with `ping` or `telnet`
+
+#### API Connectivity Issues
+
+**Problem**: Frontend not connecting to backend API, or 405 Method Not Allowed errors.
+
+**Solution**:
+- Ensure backend is running on the expected port (8080)
+- Verify that the server context path is set to `/api` in application properties
+- Check that controller mappings don't duplicate the `/api` prefix
+- Confirm proper CORS configuration in both frontend and backend
+- Ensure the Nginx configuration correctly proxies requests to the backend
+- Verify environment variables for frontend API URL: `VITE_SPRING_BOOT_URL=http://backend:8080/api`
 
 #### Memory Errors
 
