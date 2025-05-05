@@ -1,9 +1,10 @@
 FROM eclipse-temurin:24-jdk AS build
 WORKDIR /app
 
-# Copy maven wrapper and pom.xml
+# Make mvnw executable
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
+RUN chmod +x mvnw
 
 # Download dependencies
 RUN ./mvnw dependency:go-offline -B
@@ -11,8 +12,8 @@ RUN ./mvnw dependency:go-offline -B
 # Copy source code
 COPY src ./src
 
-# Build the application
-RUN ./mvnw package -DskipTests
+# Build the application and skip tests completely
+RUN ./mvnw package -Dmaven.test.skip=true
 
 # Runtime image
 FROM eclipse-temurin:24-jre
@@ -28,5 +29,5 @@ VOLUME /app/temp
 # Expose port
 EXPOSE 8080
 
-# Set entrypoint
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# Set entrypoint with configurable JVM options
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]

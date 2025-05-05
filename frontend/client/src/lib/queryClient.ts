@@ -1,12 +1,11 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-export const SPRING_BOOT_URL = import.meta.env.VITE_SPRING_BOOT_URL
+export const SPRING_BOOT_URL = import.meta.env.VITE_SPRING_BOOT_URL || "/api";
+
+type UnauthorizedBehavior = "throw" | "returnNull";
 
 async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
-  }
+  if (!res.ok) throw new Error(await res.text());
 }
 
 export async function apiRequest(
@@ -14,7 +13,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  url = SPRING_BOOT_URL + url
+  url = url.startsWith('/') ? url : `${SPRING_BOOT_URL}/${url}`;
   
   const res = await fetch(url, {
     method,
@@ -27,7 +26,6 @@ export async function apiRequest(
   return res;
 }
 
-type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =

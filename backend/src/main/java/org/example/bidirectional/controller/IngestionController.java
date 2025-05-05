@@ -24,7 +24,7 @@ import java.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
-@RequestMapping("/api/clickhouse")
+@RequestMapping("/clickhouse")
 public class IngestionController {
     @Value("${config.frontend}")
     private String frontendUrl;
@@ -147,7 +147,7 @@ public class IngestionController {
                         super.close();
 
                         try { Files.deleteIfExists(file.toPath()); }
-                        catch (IOException _) {}
+                        catch (IOException ignored) {}
                     }
                 };
             }

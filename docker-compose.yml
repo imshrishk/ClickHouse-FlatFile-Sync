@@ -1,6 +1,19 @@
-version: '3.8'
-
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_SPRING_BOOT_URL=http://backend:8080/api
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_SPRING_BOOT_URL=http://backend:8080/api
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
   backend:
     build:
       context: ./backend
@@ -11,36 +24,35 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - CLICKHOUSE_DEFAULT_HOST=clickhouse
       - CLICKHOUSE_DEFAULT_PORT=8123
-      - CLICKHOUSE_DEFAULT_DATABASE=default
       - CLICKHOUSE_DEFAULT_USERNAME=default
-      - CLICKHOUSE_DEFAULT_PASSWORD=
+      - CLICKHOUSE_DEFAULT_PASSWORD=clickhouse
+      - CONFIG_FRONTEND=http://frontend:80, http://localhost:5173
+      - JAVA_OPTS=-Dserver.port=8080 -Dserver.servlet.context-path=/api
     volumes:
-      - app_temp:/app/temp
+      - backend_temp:/app/temp
+    networks:
+      - app-network
     depends_on:
       - clickhouse
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "80:80"
-    environment:
-      - VITE_SPRING_BOOT_URL=http://localhost:8080
-    depends_on:
-      - backend
-    restart: unless-stopped
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     restart: unless-stopped
+    networks:
+      - app-network
 
 volumes:
   clickhouse_data:
-  app_temp:
+  backend_temp:
+
+networks:
+  app-network:
+    driver: bridge

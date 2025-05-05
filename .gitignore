@@ -1,4 +1,4 @@
-# Backend (Java/Spring)
+# Backend (Java/Spring Boot)
 HELP.md
 target/
 !.mvn/wrapper/maven-wrapper.jar
@@ -30,7 +30,10 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-# Frontend
+### VS Code ###
+.vscode/
+
+# Frontend (React)
 node_modules/
 dist/
 client/dist/
@@ -39,8 +42,14 @@ server/public/
 vite.config.ts.*
 *.tar.gz
 .replit
+*.local
 
-# General
+# Dependency lock files (keep these in version control)
+# !package-lock.json
+# !pnpm-lock.yaml
+# !yarn.lock
+
+# Logs
 logs/
 *.log
 npm-debug.log*
@@ -50,8 +59,6 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Editor specific
-.vscode/
-.idea/
 *.suo
 *.ntvs*
 *.njsproj
@@ -80,8 +87,19 @@ temp/
 .parcel-cache
 .temp/
 
+# Large binary files
+clickhouse
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+*.db
+*.dat
+
 # ClickHouse specific
 *.identifier
+clickhouse_data/
 
 # OS specific
 Thumbs.db
@@ -93,7 +111,6 @@ Desktop.ini
 # Test coverage reports
 coverage/
 .nyc_output/
-
 junit/
 test-results/
 htmlReport/

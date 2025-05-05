@@ -1,5 +1,11 @@
 # Docker-specific configuration
 
+# Server configuration
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
 # Use environment variables for ClickHouse connection in Docker
 clickhouse:
   default:

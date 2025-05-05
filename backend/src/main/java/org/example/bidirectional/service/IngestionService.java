@@ -121,7 +121,6 @@ public class IngestionService {
             CsvWriterSettings writerSettings = new CsvWriterSettings();
             writerSettings.getFormat().setDelimiter(delimiterChar);
             writerSettings.setQuoteAllFields(false);
-            writerSettings.setMaxColumnWidth(100000);
             
             // Create buffered reader and writer
             BufferedReader bufferedReader = null;
