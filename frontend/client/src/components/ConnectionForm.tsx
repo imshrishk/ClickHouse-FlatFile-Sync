@@ -120,7 +120,7 @@ export default function ConnectionForm({ onSubmit, title }: ConnectionFormProps)
                 <FormItem>
                   <FormLabel>Host</FormLabel>
                   <FormControl>
-                    <Input placeholder="localhost" {...field} />
+                    <Input placeholder="host.docker.internal" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -148,7 +148,7 @@ export default function ConnectionForm({ onSubmit, title }: ConnectionFormProps)
                 <FormItem>
                   <FormLabel>Database</FormLabel>
                   <FormControl>
-                    <Input placeholder="default" {...field} />
+                    <Input placeholder="your_db" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -186,7 +186,7 @@ export default function ConnectionForm({ onSubmit, title }: ConnectionFormProps)
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Enter your Password" {...field} />
+                      <Input type="password" placeholder="default" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

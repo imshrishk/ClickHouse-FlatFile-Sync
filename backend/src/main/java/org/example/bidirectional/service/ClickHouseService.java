@@ -522,15 +522,18 @@ public class ClickHouseService {
      * 
      * <p>Used throughout the service to safely include table and column names in SQL queries.</p>
      * 
-     * @param name The identifier to quote
+     * @param identifier The identifier to quote
      * @return The quoted identifier
      */
-    protected static String quote(String name) {
-        if (name == null) {
-            logger.warn("Attempt to quote null name, returning empty quoted string");
-            return "``";
+    protected static String quote(String identifier) {
+        if (identifier == null || identifier.isEmpty()) {
+            logger.warn("Attempt to quote null or empty identifier, returning empty quoted string ``");
+            return "``"; // ClickHouse empty quoted identifier
         }
-        return "`" + name.replace("`", "``") + "`";
+        // Assumes 'identifier' is the actual identifier string, already cleaned of extraneous quotes.
+        // Escapes internal backticks and wraps the whole identifier in backticks.
+        String escapedIdentifier = identifier.replace("`", "``");
+        return "`" + escapedIdentifier + "`";
     }
 
     /**
@@ -579,28 +582,36 @@ public class ClickHouseService {
                 continue;
             }
             
-            if (columns.get(i).contains(".")) {
-                // Handle qualified column names (table.column)
-                String[] column = columns.get(i).split("\\.");
-                if (column.length == 2) {
-                    queryBuilder.append(quote(column[0]));
+            String currentColumnString = columns.get(i);
+
+            if (currentColumnString.contains(".")) {
+                // Handle qualified column names (e.g., "table.\"column\"")
+                String[] parts = currentColumnString.split("\\.", 2);
+                if (parts.length == 2) {
+                    String tablePart = parts[0].replace("\"", ""); // Clean table part by removing double quotes
+                    String columnPart = parts[1].replace("\"", ""); // Clean column part by removing double quotes
+                    
+                    queryBuilder.append(quote(tablePart));
                     queryBuilder.append(".");
-                    queryBuilder.append(quote(column[1]));
+                    queryBuilder.append(quote(columnPart));
                 } else {
-                    logger.warn("Invalid qualified column name format: {}", columns.get(i));
-                    queryBuilder.append(quote(columns.get(i)));
+                    // Should ideally not happen if contains(".") and split with limit 2
+                    logger.warn("Invalid qualified column name format (after split): {}", currentColumnString);
+                    queryBuilder.append(quote(currentColumnString.replace("\"", ""))); // Fallback: clean and quote the whole string
                 }
             } else {
-                // Handle unqualified column names
-                queryBuilder.append(quote(tableName)).append('.');
-                queryBuilder.append(quote(columns.get(i)));
+                // Handle unqualified column names (e.g., "\"column\"")
+                String cleanedColumn = currentColumnString.replace("\"", ""); // Clean column part
+                queryBuilder.append(quote(tableName)); // Main table name, already a clean identifier
+                queryBuilder.append('.');
+                queryBuilder.append(quote(cleanedColumn));
             }
 
             if (i < columns.size() - 1) queryBuilder.append(',');
         }
         
         // Add FROM clause with main table
-        queryBuilder.append(" FROM `").append(tableName).append('`');
+        queryBuilder.append(" FROM ").append(quote(tableName.replace("\"", ""))); // Ensure main table name is also cleaned if it could have quotes
 
         // Add JOIN clauses if provided
         if (joins != null && !joins.isEmpty()) {
@@ -623,7 +634,37 @@ public class ClickHouseService {
                     logger.warn("Join condition is empty for table {}, using 1=1", jt.getTableName());
                     queryBuilder.append("1=1");
                 } else {
-                    queryBuilder.append(jt.getJoinCondition());
+                    // Process the join condition to properly quote identifiers
+                    // This is a simple approach that assumes the condition is in the form "table1.column1 = table2.column2"
+                    String joinCondition = jt.getJoinCondition();
+                    
+                    // Don't modify complex conditions or those that already have proper quoting
+                    if (joinCondition.contains("(") || joinCondition.contains("`")) {
+                        queryBuilder.append(joinCondition);
+                    } else {
+                        // Try to identify and quote table.column references
+                        String[] parts = joinCondition.split("\\s+");
+                        StringBuilder conditionBuilder = new StringBuilder();
+                        
+                        for (String part : parts) {
+                            if (part.contains(".")) {
+                                // This might be a table.column reference
+                                String[] identifierParts = part.split("\\.", 2);
+                                if (identifierParts.length == 2) {
+                                    conditionBuilder.append(quote(identifierParts[0]))
+                                                   .append(".")
+                                                   .append(quote(identifierParts[1].replace("\"", "")));
+                                } else {
+                                    conditionBuilder.append(part);
+                                }
+                            } else {
+                                conditionBuilder.append(part);
+                            }
+                            conditionBuilder.append(" ");
+                        }
+                        
+                        queryBuilder.append(conditionBuilder.toString().trim());
+                    }
                 }
             }
         }
@@ -665,12 +706,24 @@ public class ClickHouseService {
         try {
             int rowLimit = (limit != null && limit > 0) ? limit : 100; // Default to 100 if limit is null or invalid
             logger.info("Querying selected columns from table {} (preview), limit: {}", tableName, rowLimit);
+            
+            // Log the columns being queried
+            if (columns != null && !columns.isEmpty()) {
+                logger.info("Columns to query ({}): {}", columns.size(), String.join(", ", columns));
+                
+                // Check for columns with quotes and log warnings
+                for (String column : columns) {
+                    if (column.contains("\"")) {
+                        logger.warn("Column name contains quotes which may cause issues: {}", column);
+                    }
+                }
+            }
 
             // Special handling for COUNT(*)
             if (columns != null && columns.size() == 1) {
                 String col = columns.get(0).replace("`", "").replace("\"", "").trim();
                 if (col.equalsIgnoreCase("COUNT(*)") || col.equalsIgnoreCase(tableName + ".COUNT(*)")) {
-                    String sql = String.format("SELECT COUNT(*) FROM `%s`", tableName);
+                    String sql = String.format("SELECT COUNT(*) FROM %s", quote(tableName));
                     List<String[]> result = fetchDataHelper(sql);
                     // Add header row for consistency
                     List<String[]> withHeader = new java.util.ArrayList<>();
@@ -680,8 +733,31 @@ public class ClickHouseService {
                 }
             }
 
-            String sql = getJoinedQuery(tableName, columns, joins);
-            return fetchDataHelper(sql + " LIMIT " + rowLimit);
+            // Log information about joins if present
+            if (joins != null && !joins.isEmpty()) {
+                logger.info("Query includes {} joins", joins.size());
+                for (int i = 0; i < joins.size(); i++) {
+                    JoinTable jt = joins.get(i);
+                    logger.info("Join #{}: type={}, table={}, condition='{}'", 
+                        i+1, jt.getJoinType(), jt.getTableName(), jt.getJoinCondition());
+                    
+                    // Verify join condition is properly formatted
+                    if (jt.getJoinCondition() == null || jt.getJoinCondition().trim().isEmpty()) {
+                        logger.warn("Join condition is empty for table {}, will use 1=1", jt.getTableName());
+                    } else if (!jt.getJoinCondition().contains(".")) {
+                        logger.warn("Join condition may be missing table qualifiers: {}", jt.getJoinCondition());
+                    }
+                }
+            }
+
+            try {
+                String sql = getJoinedQuery(tableName, columns, joins);
+                logger.debug("Executing SQL query: {}", sql);
+                return fetchDataHelper(sql + " LIMIT " + rowLimit);
+            } catch (Exception e) {
+                logger.error("Error in SQL query generation or execution: {}", e.getMessage(), e);
+                throw new Exception("Failed to execute query: " + e.getMessage(), e);
+            }
         } catch (Exception e) {
             logger.error("Failed to query selected columns from table {}: {}", tableName, e.getMessage(), e);
             throw new Exception("Failed to query selected columns: " + e.getMessage(), e);
