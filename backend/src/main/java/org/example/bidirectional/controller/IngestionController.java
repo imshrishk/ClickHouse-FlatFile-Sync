@@ -1,5 +1,9 @@
 package org.example.bidirectional.controller;
 
+import com.opencsv.CSVReader;
+import com.opencsv.CSVReaderBuilder;
+import com.opencsv.CSVWriter;
+import com.opencsv.exceptions.CsvException;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -9,6 +13,7 @@ import org.example.bidirectional.model.ColumnInfo;
 import org.example.bidirectional.service.ClickHouseService;
 import org.example.bidirectional.service.FileService;
 import org.example.bidirectional.service.IngestionService;
+import org.example.bidirectional.service.CsvPreviewService;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,8 +22,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,16 +33,35 @@ import java.util.*;
 import java.util.Enumeration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/clickhouse")
 public class IngestionController {
+    private static final Logger logger = LoggerFactory.getLogger(IngestionController.class);
+
     @Value("${config.frontend}")
     private String frontendUrl;
 
+    @Autowired
+    private CsvPreviewService csvPreviewService;
+
     @PostConstruct
     public void init() {
-        System.out.println("Ensure FrontEnd is running on: " + frontendUrl);
+        logger.info("IngestionController initialized. Frontend URL: {}", frontendUrl);
+    }
+
+    // Add a simple health check endpoint for testing connectivity
+    @GetMapping("/health-test")
+    public ResponseEntity<Map<String, Object>> healthTest() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "ok");
+        response.put("timestamp", System.currentTimeMillis());
+        response.put("message", "ClickHouse controller is responsive");
+        
+        logger.info("Health check endpoint called on IngestionController");
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/test-connection")
@@ -85,30 +111,108 @@ public class IngestionController {
         try {
             ClickHouseService clickHouseService = new ClickHouseService(config.getConnection());
 
+            // Add more detailed logging
+            logger.info("Processing query-selected-columns request for table: {}, columns: {}, limit: {}",
+                    config.getTableName(),
+                    config.getColumns() != null ? config.getColumns().size() : 0,
+                    config.getLimit());
+
             List<String[]> rows = clickHouseService.querySelectedColumns(
                     config.getTableName(),
                     config.getColumns(),
                     config.getJoinTables(),
-                    config.getDelimiter()
+                    config.getDelimiter(),
+                    config.getLimit()
             );
 
             // Build response: first row is headers, remaining rows are data
+            logger.info("Query completed successfully, returning {} rows", rows.size() - 1);
             return getHeadAndData(rows);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to query selected columns.");
+            logger.error("Failed to query selected columns: {}", e.getMessage(), e);
+            throw new IllegalArgumentException("Failed to query selected columns: " + e.getMessage());
         }
     }
 
+    /**
+     * Endpoint for previewing CSV data with optimized large file handling
+     * Uses stream-based processing and limits preview to a reasonable number of rows
+     */
     @PostMapping(value = "/preview-csv", consumes = {"multipart/form-data"})
     public ResponseEntity<Map<String, Object>> previewCSV(
             @RequestPart("file") MultipartFile file,
-            @RequestParam(value = "delimiter", defaultValue = ",") String delimiter
+            @RequestParam(value = "delimiter", defaultValue = ",") String delimiter,
+            @RequestParam(value = "hasHeader", required = false, defaultValue = "true") boolean hasHeader
     ) throws Exception {
+        logger.info("Preview CSV request received for file: {}, size: {}, delimiter: '{}', hasHeader: {}", 
+                   file.getOriginalFilename(), formatFileSize(file.getSize()), delimiter, hasHeader);
+        
         try {
-            List<String[]> rows = FileService.readCsvRows(file.getInputStream(), delimiter);
-            return getHeadAndData(rows);
+            char delimiterChar = ClickHouseService.convertStringToChar(delimiter);
+            
+            // Try to show the first ~500 bytes of the file for debugging
+            try (InputStream debugStream = file.getInputStream()) {
+                byte[] debugBytes = new byte[500];
+                int read = debugStream.read(debugBytes);
+                if (read > 0) {
+                    String preview = new String(debugBytes, 0, read, StandardCharsets.UTF_8);
+                    logger.debug("File content preview: \n{}", preview);
+                }
+            } catch (Exception e) {
+                logger.warn("Could not read debug preview: {}", e.getMessage());
+            }
+            
+            // For very large files, create a temporary file
+            if (file.getSize() > 10 * 1024 * 1024) { // 10MB threshold
+                logger.info("Using large file optimization for file of size: {}", 
+                           formatFileSize(file.getSize()));
+                
+                Path tempFile = Files.createTempFile("preview_", ".csv");
+                try {
+                    // Transfer only the first part of the file (max 1MB for preview)
+                    try (InputStream in = file.getInputStream();
+                         OutputStream out = Files.newOutputStream(tempFile)) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        long totalRead = 0;
+                        long previewLimit = 1024 * 1024; // 1MB max
+                        
+                        while ((bytesRead = in.read(buffer)) != -1 && totalRead < previewLimit) {
+                            out.write(buffer, 0, bytesRead);
+                            totalRead += bytesRead;
+                        }
+                    }
+                    
+                    // Process the temp file with our specialized service
+                    try (InputStream fileStream = Files.newInputStream(tempFile)) {
+                        Map<String, Object> result = csvPreviewService.createPreview(fileStream, delimiterChar, hasHeader);
+                        return ResponseEntity.ok(result);
+                    }
+                } finally {
+                    try {
+                        Files.deleteIfExists(tempFile);
+                    } catch (Exception e) {
+                        logger.warn("Failed to delete temp file: {}", tempFile);
+                    }
+                }
+            } else {
+                // For smaller files, process directly
+                try (InputStream inputStream = file.getInputStream()) {
+                    Map<String, Object> result = csvPreviewService.createPreview(inputStream, delimiterChar, hasHeader);
+                    return ResponseEntity.ok(result);
+                }
+            }
         } catch (Exception e) {
-            throw new Exception("Failed to preview CSV. Please check if file exists.");
+            logger.error("Failed to preview CSV file: {}", e.getMessage(), e);
+            
+            // Provide a graceful error response rather than throwing
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", "Failed to parse CSV: " + e.getMessage());
+            errorResponse.put("headers", List.of("Error"));
+            errorResponse.put("rows", List.of(new String[]{"Failed to parse CSV file. Check the format and delimiter."}));
+            errorResponse.put("hasHeader", hasHeader);
+            
+            return ResponseEntity.ok(errorResponse);
         }
     }
 
@@ -256,9 +360,14 @@ public class IngestionController {
     @PostMapping(value = "/upload", consumes = {"multipart/form-data"})
     public ResponseEntity<Map<String, Object>> ingestFromFile(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("config") String configJson
+            @RequestPart("config") String configJson,
+            @RequestParam(value = "streaming", required = false, defaultValue = "false") boolean streaming
     ) {
         Map<String, Object> response = new HashMap<>();
+        
+        logger.info("Upload request received, file size: {} bytes, streaming mode: {}", 
+                    file.getSize(), streaming ? "enabled" : "disabled");
+        
         try {
             // Parse the config JSON string to UploadConfig POJO
             ObjectMapper mapper = new ObjectMapper();
@@ -267,32 +376,144 @@ public class IngestionController {
             // Setting up services
             ClickHouseService clickHouseService = new ClickHouseService(request.getConnection());
             IngestionService ingestionService = new IngestionService(clickHouseService);
-
-            if (request.isCreateNewTable())
+            
+            // Check if column types are provided in the config
+            boolean hasColumnTypes = request.getColumnTypes() != null && !request.getColumnTypes().isEmpty();
+            boolean needsColumnDetection = request.isCreateNewTable() && !hasColumnTypes;
+            
+            // If creating a new table and no column types provided, we need to detect them from the CSV
+            if (needsColumnDetection) {
+                logger.info("Auto-detecting columns for new table: {}", request.getTableName());
+                
+                // Parse the first part of the CSV to detect columns
+                try (InputStream previewStream = file.getInputStream()) {
+                    // Use CsvPreviewService to parse CSV headers and sample data
+                    char delimiterChar = ClickHouseService.convertStringToChar(request.getDelimiter());
+                    Map<String, Object> previewResult = csvPreviewService.createPreview(
+                            previewStream, delimiterChar, true); // Assume headers for column detection
+                    
+                    if (previewResult.containsKey("error")) {
+                        throw new Exception("Failed to extract column names: " + previewResult.get("error"));
+                    }
+                    
+                    // Extract headers from the preview
+                    Object headersObj = previewResult.get("headers");
+                    if (headersObj == null) {
+                        throw new Exception("No column headers detected in CSV");
+                    }
+                    
+                    logger.info("Extracted headers: {}", headersObj);
+                    
+                    // Convert headers to column types map (defaulting all to String)
+                    Map<String, String> columnTypes = new HashMap<>();
+                    if (headersObj instanceof String[]) {
+                        String[] headers = (String[]) headersObj;
+                        for (String header : headers) {
+                            columnTypes.put(header, "String"); // Default type for all columns
+                        }
+                    } else if (headersObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> headers = (List<String>) headersObj;
+                        for (String header : headers) {
+                            columnTypes.put(header, "String"); // Default type for all columns
+                        }
+                    } else {
+                        throw new Exception("Unexpected header format in CSV preview");
+                    }
+                    
+                    // Set the detected column types in the request
+                    request.setColumnTypes(columnTypes);
+                    logger.info("Auto-detected {} columns for table {}", columnTypes.size(), request.getTableName());
+                }
+            }
+            
+            // Create the table if needed
+            if (request.isCreateNewTable()) {
+                logger.info("Creating new table: {}", request.getTableName());
                 clickHouseService.createTable(request.getTableName(), request.getColumnTypes());
+            }
 
             long lines;
-            // Ingest only selected columns from CSV stream
-            try (InputStream ingestionStream = file.getInputStream()) {
-                lines = ingestionService.ingestDataFromStream(
-                        request.getTotalCols(),
-                        request.getTableName(),
-                        new ArrayList<>(request.getColumnTypes().keySet()),
-                        request.getDelimiter(),
-                        ingestionStream);
+            // For large files (over 1GB), use temp file to avoid memory issues
+            if (streaming || file.getSize() > 1_073_741_824L) { // 1GB threshold
+                logger.info("Using file-based streaming for large file ({})", 
+                           formatFileSize(file.getSize()));
+                
+                // Create temporary file
+                Path tempFile = Files.createTempFile("upload_", ".csv");
+                try {
+                    logger.debug("Created temp file: {}", tempFile);
+                    
+                    // Transfer the upload to the temp file
+                    try (InputStream in = file.getInputStream();
+                         OutputStream out = Files.newOutputStream(tempFile)) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        long totalRead = 0;
+                        while ((bytesRead = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, bytesRead);
+                            totalRead += bytesRead;
+                            if (totalRead % 104_857_600 == 0) { // Log every 100MB
+                                logger.debug("Wrote {}MB to temp file", totalRead / 1_048_576);
+                            }
+                        }
+                    }
+                    
+                    // Process from the temp file
+                    try (InputStream fileStream = Files.newInputStream(tempFile)) {
+                        lines = ingestionService.ingestDataFromStream(
+                                request.getTotalCols() != null ? request.getTotalCols() : request.getColumnTypes().size(),
+                                request.getTableName(),
+                                new ArrayList<>(request.getColumnTypes().keySet()),
+                                request.getDelimiter(),
+                                fileStream);
+                    }
+                } finally {
+                    // Clean up the temp file
+                    try {
+                        Files.deleteIfExists(tempFile);
+                        logger.debug("Deleted temp file: {}", tempFile);
+                    } catch (Exception e) {
+                        logger.warn("Failed to delete temp file: {}", tempFile, e);
+                    }
+                }
+            } else {
+                // For smaller files, stream directly from memory
+                logger.info("Using direct streaming for smaller file ({})", 
+                           formatFileSize(file.getSize()));
+                           
+                try (InputStream ingestionStream = file.getInputStream()) {
+                    lines = ingestionService.ingestDataFromStream(
+                            request.getTotalCols() != null ? request.getTotalCols() : request.getColumnTypes().size(),
+                            request.getTableName(),
+                            new ArrayList<>(request.getColumnTypes().keySet()),
+                            request.getDelimiter(),
+                            ingestionStream);
+                }
             }
 
             response.put("lines", lines);
             response.put("success", true);
             response.put("message", "Upload successful");
+            logger.info("Upload completed successfully, processed {} lines", lines);
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            logger.error("Upload failed: {}", e.getMessage(), e);
             response.put("lines", 0);
             response.put("success", false);
             response.put("message", "Error: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+    
+    /**
+     * Helper method to format file size for logging
+     */
+    private String formatFileSize(long size) {
+        if (size < 1024) return size + " B";
+        int z = (63 - Long.numberOfLeadingZeros(size)) / 10;
+        return String.format("%.1f %sB", (double)size / (1L << (z*10)), " KMGTPE".charAt(z));
     }
 
     @PostMapping("/types")
@@ -417,5 +638,17 @@ public class IngestionController {
             response.setContentType("text/plain");
             response.getWriter().write("Failed to generate direct download: " + e.getMessage());
         }
+    }
+
+    // Add OPTIONS request handling for CORS preflight
+    @RequestMapping(value = "/**", method = RequestMethod.OPTIONS)
+    public ResponseEntity handleOptions() {
+        return ResponseEntity
+            .ok()
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "POST, GET, PUT, OPTIONS, DELETE")
+            .header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+            .header("Access-Control-Max-Age", "3600")
+            .build();
     }
 }

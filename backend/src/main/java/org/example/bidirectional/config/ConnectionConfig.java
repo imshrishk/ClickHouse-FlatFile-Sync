@@ -9,6 +9,8 @@ public class ConnectionConfig {
     private String authType;
     private String jwt;  // For JWT or token
     private String password;   // For password
+    private long connectTimeout = 120000; // Default 120 seconds
+    private long socketTimeout = 1200000; // Default 20 minutes
 
     public String getProtocol() {
         return protocol;
@@ -79,5 +81,23 @@ public class ConnectionConfig {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+    
+    // Getter and Setter for connectTimeout
+    public long getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public void setConnectTimeout(long connectTimeout) {
+        this.connectTimeout = connectTimeout;
+    }
+
+    // Getter and Setter for socketTimeout
+    public long getSocketTimeout() {
+        return socketTimeout;
+    }
+
+    public void setSocketTimeout(long socketTimeout) {
+        this.socketTimeout = socketTimeout;
     }
 }

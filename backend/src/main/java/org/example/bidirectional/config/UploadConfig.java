@@ -9,6 +9,7 @@ public class UploadConfig {
     private boolean createNewTable = false;
     private String delimiter;
     private Map<String, String> columnTypes;
+    private boolean hasHeader = true;
 
     // Getters and Setters
     public Integer getTotalCols() {
@@ -57,5 +58,13 @@ public class UploadConfig {
 
     public void setColumnTypes(Map<String, String> columnTypes) {
         this.columnTypes = columnTypes;
+    }
+
+    public boolean isHasHeader() {
+        return hasHeader;
+    }
+
+    public void setHasHeader(boolean hasHeader) {
+        this.hasHeader = hasHeader;
     }
 }

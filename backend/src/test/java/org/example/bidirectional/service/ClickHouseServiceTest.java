@@ -290,7 +290,7 @@ class ClickHouseServiceTest {
         when(mockClient.ping()).thenReturn(true);
         when(mockQueryResponse.getInputStream()).thenReturn(inputStream);
         
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
         when(mockClient.query(anyString(), any(QuerySettings.class))).thenReturn(future);
 
         // Set up for constructor
@@ -329,7 +329,7 @@ class ClickHouseServiceTest {
         when(mockClient.ping()).thenReturn(true);
         when(mockQueryResponse.getInputStream()).thenReturn(inputStream);
         
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
         when(mockClient.query(anyString(), any(QuerySettings.class))).thenReturn(future);
 
         // Set up for constructor
@@ -453,7 +453,7 @@ class ClickHouseServiceTest {
         types.put("name", "String");
         types.put("created_at", "DateTime");
         
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
         when(mockClient.query(anyString())).thenReturn(future);
         
         // Set up for constructor

@@ -10,6 +10,10 @@ import com.univocity.parsers.csv.CsvWriterSettings;
 import org.example.bidirectional.config.SelectedColumnsQueryConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.clickhouse.client.api.query.QueryResponse;
+import com.opencsv.CSVReader;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 import java.io.*;
 import java.util.List;
@@ -312,11 +316,36 @@ public class IngestionService {
 
         // Build the SQL query with format specification and delimiter
         try {
+            // Create the base query
             String sql = clickHouseService.getJoinedQuery(
                     config.getTableName(), 
                     config.getColumns(), 
                     config.getJoinTables()
-                ) + " FORMAT CSVWithNames SETTINGS format_csv_delimiter = '"
+                );
+            
+            // Get total row count first
+            String countQuery = sql.replace("SELECT", "SELECT COUNT(*) as total_rows");
+            long totalRows;
+            try (QueryResponse qr = clickHouseService.getClient()
+                    .query(countQuery)
+                    .get();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(qr.getInputStream()));
+                 CSVReader csvReader = new CSVReader(reader)) {
+                String[] row = csvReader.readNext();
+                if (row != null && row.length > 0) {
+                    totalRows = Long.parseLong(row[0]);
+                } else {
+                    totalRows = 0;
+                }
+            }
+            
+            // Add limit clause if specified
+            if (config.getLimit() != null && config.getLimit() > 0) {
+                sql += " LIMIT " + config.getLimit();
+            }
+            
+            // Add format specification
+            sql += " FORMAT CSVWithNames SETTINGS format_csv_delimiter = '"
                 + ClickHouseService.convertStringToChar(config.getDelimiter()) + "';";
             
             logger.debug("Executing query for data export: {}", sql);
@@ -348,7 +377,7 @@ public class IngestionService {
             }
             
             // Return the header row (1) + the number of data rows
-            return estimatedRows > 0 ? estimatedRows + 1 : 1;
+            return totalRows;
         } catch (Exception e) {
             logger.error("Failed to stream data from table '{}': {}", config.getTableName(), e.getMessage(), e);
             throw new Exception("Failed to export data: " + e.getMessage(), e);

@@ -32,7 +32,7 @@ export type ConnectionConfig = z.infer<typeof connectionSchema>;
 
 // Upload Schema
 export const uploadSchema = z.object({
-  totalCols: z.number(),
+  totalCols: z.number().optional(),
   connection: connectionSchema,
   tableName: z.string().min(1, { message: "Table name is required" }),
   createNewTable: z.boolean().default(false),
@@ -78,6 +78,7 @@ export const selectedColumnsQuerySchema = z.object({
   tableName: z.string().min(1, { message: "Table name is required" }),
   columns: z.array(z.string()).min(1, { message: "At least one column must be selected" }),
   delimiter: z.string().max(3, { message: "Delimiter must be <= 3 character" }).optional(),
+  limit: z.number().optional(),
   joinTables: z.array(z.object({
     tableName: z.string(),
     joinType: z.enum([

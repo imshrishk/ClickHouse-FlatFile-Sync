@@ -13,38 +13,51 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Pull the ClickHouse image if not already pulled
-echo "Pulling ClickHouse Docker image..."
-docker pull clickhouse/clickhouse-server:latest
+# Wait for ClickHouse to be ready
+echo "Waiting for ClickHouse to be ready..."
+max_attempts=30
+attempt=1
+while ! curl -s http://clickhouse:8123/ping > /dev/null; do
+    if [ $attempt -gt $max_attempts ]; then
+        echo "Error: ClickHouse did not become ready in time"
+        exit 1
+    fi
+    echo "Attempt $attempt of $max_attempts: Waiting for ClickHouse..."
+    sleep 2
+    attempt=$((attempt + 1))
+done
+echo "ClickHouse is ready!"
 
-# Create a temporary container to initialize database
-echo "Setting up ClickHouse database..."
-CONTAINER_ID=$(docker run -d --name clickhouse-temp \
-    -e CLICKHOUSE_USER=default \
-    -e CLICKHOUSE_PASSWORD=clickhouse \
-    clickhouse/clickhouse-server:latest)
+# Create database and tables
+echo "Creating database and tables..."
+if ! curl -s http://clickhouse:8123/ --data-binary @create_schema.sql; then
+    echo "Error: Failed to create database and tables"
+    exit 1
+fi
 
-# Wait for ClickHouse to start
-echo "Waiting for ClickHouse to initialize..."
-sleep 10
+# Verify database creation
+echo "Verifying database creation..."
+if ! curl -s "http://clickhouse:8123/?query=SHOW+DATABASES" | grep -q "uk"; then
+    echo "Error: Database 'uk' was not created"
+    exit 1
+fi
 
-# Create test database and table
-echo "Creating test database and table..."
-docker exec -it clickhouse-temp clickhouse-client --user default --password clickhouse -q "
-CREATE DATABASE IF NOT EXISTS test;
-CREATE TABLE IF NOT EXISTS test.sample (
-    id UInt32,
-    name String,
-    value Float64
-) ENGINE = MergeTree() ORDER BY id;
+# Verify table creation
+echo "Verifying table creation..."
+if ! curl -s "http://clickhouse:8123/?query=SHOW+TABLES+FROM+uk" | grep -q "uk_price_paid"; then
+    echo "Error: Table 'uk_price_paid' was not created"
+    exit 1
+fi
 
-INSERT INTO test.sample VALUES (1, 'Test', 1.0), (2, 'Sample', 2.5), (3, 'Data', 3.14);
-"
-
-# Cleanup temporary container
-echo "Cleaning up temporary container..."
-docker stop clickhouse-temp
-docker rm clickhouse-temp
+# Import sample data if available
+if [ -f "sample_data.csv" ]; then
+    echo "Importing sample data..."
+    if ! curl -s http://clickhouse:8123/ --data-binary "INSERT INTO uk.uk_price_paid FORMAT CSVWithNames" < sample_data.csv; then
+        echo "Error: Failed to import sample data"
+        exit 1
+    fi
+    echo "Sample data imported successfully"
+fi
 
 echo ""
 echo "ClickHouse setup completed successfully!"

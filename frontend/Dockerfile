@@ -3,11 +3,15 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json
+# Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Configure npm and install dependencies with retry logic
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm install --no-audit --no-fund --prefer-offline --network-timeout=100000
 
 # Set environment variable for build
 ARG VITE_SPRING_BOOT_URL
@@ -22,8 +26,8 @@ COPY . .
 # Create .env file
 RUN echo "VITE_SPRING_BOOT_URL=${VITE_SPRING_BOOT_URL}" > .env
 
-# Build the application
-RUN npm run build
+# Build the application using npx to ensure vite is available
+RUN npx vite build
 
 # Production stage
 FROM nginx:alpine

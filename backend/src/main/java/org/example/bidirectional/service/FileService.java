@@ -126,11 +126,12 @@ public class FileService {
 
     /**
      * Reads CSV data from an input stream and returns it as a list of String arrays.
-     * The first array in the returned list contains the headers.
+     * If hasHeader is true, the first array in the returned list contains the headers.
+     * This method is optimized for large file previews by limiting the number of rows read.
      * 
      * @param inputStream The input stream containing CSV data
      * @param delimiter The delimiter string (will be converted to char)
-     * @return List of String arrays containing the CSV data (including headers)
+     * @return List of String arrays containing the CSV data
      */
     public static List<String[]> readCsvRows(InputStream inputStream, String delimiter) {
         if (inputStream == null) {
@@ -145,9 +146,7 @@ public class FileService {
         
         logger.debug("Reading CSV from input stream with delimiter: '{}'", delimiter);
         
-        List<String[]> data = new ArrayList<>();
         char delimiterChar;
-        
         try {
             delimiterChar = ClickHouseService.convertStringToChar(delimiter);
         } catch (IllegalArgumentException e) {
@@ -155,59 +154,164 @@ public class FileService {
             throw e;
         }
 
-        CsvParserSettings parserSettings = new CsvParserSettings();
-        parserSettings.setHeaderExtractionEnabled(true);
-        parserSettings.getFormat().setDelimiter(delimiterChar);
-        parserSettings.setLineSeparatorDetectionEnabled(true);
-        parserSettings.setMaxCharsPerColumn(100000); // Handle large fields (100K chars max)
-        parserSettings.setInputBufferSize(DEFAULT_BUFFER_SIZE);
+        // Try a simple line-by-line approach first for complex files
+        if (inputStream.markSupported()) {
+            try {
+                // First check if this looks like a complex file
+                inputStream.mark(8192);
+                BufferedReader checkReader = new BufferedReader(
+                    new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+                String firstLine = checkReader.readLine();
+                
+                if (firstLine != null) {
+                    // If the line has many quotes and tabs, try simple line parsing
+                    int quoteCount = 0;
+                    int tabCount = 0;
+                    
+                    for (char c : firstLine.toCharArray()) {
+                        if (c == '"') quoteCount++;
+                        if (c == delimiterChar) tabCount++;
+                    }
+                    
+                    if (tabCount > 10 && quoteCount > 10) {
+                        // Reset and try special parsing for files with many quoted fields
+                        inputStream.reset();
+                        
+                        List<String[]> result = new ArrayList<>();
+                        BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+                        
+                        String line;
+                        int lineNum = 0;
+                        while ((line = reader.readLine()) != null && lineNum < 100) {
+                            lineNum++;
+                            String[] fields = parseDelimitedLine(line, delimiterChar);
+                            
+                            if (fields != null && fields.length > 0) {
+                                result.add(fields);
+                            }
+                        }
+                        
+                        if (!result.isEmpty()) {
+                            logger.info("Successfully parsed {} rows with simple line parser", result.size());
+                            return result;
+                        }
+                    }
+                }
+                
+                // Reset for standard parsing
+                inputStream.reset();
+            } catch (Exception e) {
+                logger.warn("Error in preliminary file check: {}", e.getMessage());
+                try {
+                    inputStream.reset();
+                } catch (IOException resetEx) {
+                    logger.error("Failed to reset stream", resetEx);
+                }
+            }
+        }
 
-        CsvParser parser = new CsvParser(parserSettings);
-        BufferedReader reader = null;
+        // Standard parsing approach using univocity parser
+        try {
+            // Configure parser for large file handling
+            CsvParserSettings parserSettings = new CsvParserSettings();
+            parserSettings.setHeaderExtractionEnabled(false);
+            parserSettings.getFormat().setDelimiter(delimiterChar);
+            parserSettings.getFormat().setQuote('"');
+            parserSettings.getFormat().setQuoteEscape('"');
+            parserSettings.setLineSeparatorDetectionEnabled(true);
+            parserSettings.setMaxCharsPerColumn(100000);
+            parserSettings.setKeepQuotes(false);
+            parserSettings.setNumberOfRecordsToRead(1000);
+            
+            CsvParser parser = new CsvParser(parserSettings);
+            
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(inputStream, StandardCharsets.UTF_8), DEFAULT_BUFFER_SIZE * 2)) {
+                
+                parser.beginParsing(reader);
+                List<String[]> data = new ArrayList<>();
+                String[] row;
+                
+                while ((row = parser.parseNext()) != null && data.size() < 1000) {
+                    // Trim values if needed
+                    for (int i = 0; i < row.length; i++) {
+                        if (row[i] != null) {
+                            row[i] = row[i].trim();
+                        }
+                    }
+                    data.add(row);
+                }
+                
+                logger.info("Successfully read {} rows with standard parser", data.size());
+                return data;
+            } finally {
+                if (parser != null) {
+                    parser.stopParsing();
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to parse CSV: {}", e.getMessage(), e);
+            throw new RuntimeException("Error parsing CSV data: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Parse a single delimited line handling quoted fields.
+     * This is a simplified approach for the specific case of the user's quoted data format.
+     * 
+     * @param line The line to parse
+     * @param delimiter The delimiter character
+     * @return Array of parsed fields
+     */
+    private static String[] parseDelimitedLine(String line, char delimiter) {
+        if (line == null || line.isEmpty()) {
+            return new String[0];
+        }
+        
+        List<String> fields = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean inQuotes = false;
         
         try {
-            reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8), DEFAULT_BUFFER_SIZE);
-            parser.beginParsing(reader);
-            
-            String[] headers = parser.getContext().headers();
-            if (headers == null || headers.length == 0) {
-                logger.warn("No headers found in CSV input stream");
-                // Create default header if not found
-                headers = new String[]{"Column1"};
-            }
-            
-            data.add(headers);
-            logger.debug("Found {} headers in CSV input", headers.length);
-
-            String[] row;
-            int rowCount = 0;
-            while ((row = parser.parseNext()) != null) {
-                data.add(row);
-                rowCount++;
+            for (int i = 0; i < line.length(); i++) {
+                char c = line.charAt(i);
                 
-                // Log progress periodically for large files
-                if (rowCount % 10000 == 0) {
-                    logger.debug("Processed {} rows from CSV input stream", rowCount);
+                if (c == '"') {
+                    inQuotes = !inQuotes;
+                } else if (c == delimiter && !inQuotes) {
+                    // End of field
+                    fields.add(cleanField(field.toString()));
+                    field = new StringBuilder();
+                } else {
+                    field.append(c);
                 }
             }
             
-            logger.info("Successfully read {} rows from CSV input stream", rowCount);
-            return data;
+            // Add last field
+            fields.add(cleanField(field.toString()));
+            
+            return fields.toArray(new String[0]);
         } catch (Exception e) {
-            logger.error("Error parsing CSV from input stream: {}", e.getMessage(), e);
-            throw new RuntimeException("Error parsing CSV data: " + e.getMessage(), e);
-        } finally {
-            if (parser != null) {
-                try {
-                    parser.stopParsing();
-                } catch (Exception e) {
-                    logger.warn("Error stopping CSV parser: {}", e.getMessage());
-                }
+            logger.error("Error parsing line: {}", e.getMessage());
+            // Best effort: split by delimiter and clean each field
+            String[] parts = line.split(String.valueOf(delimiter));
+            for (int i = 0; i < parts.length; i++) {
+                parts[i] = cleanField(parts[i]);
             }
-            
-            // Note: We don't close the reader here as it would close the input stream,
-            // which might be needed by the caller.
+            return parts;
         }
+    }
+    
+    /**
+     * Clean a field by trimming and removing enclosing quotes
+     */
+    private static String cleanField(String field) {
+        field = field.trim();
+        if (field.startsWith("\"") && field.endsWith("\"") && field.length() >= 2) {
+            field = field.substring(1, field.length() - 1);
+        }
+        return field;
     }
     
     /**

@@ -125,3 +125,64 @@ htmlReport/
 backend/temp/
 frontend/temp/
 uploads/
+
+# Test files
+test_*.py
+test_*.html
+test_*.csv
+test_*.ps1
+test_*.sh
+*_test.py
+*_test.html
+*_test.csv
+*_test.ps1
+*_test.sh
+
+# Sample and temporary data
+sample-*.csv
+pp-*.csv
+*.tgz
+*.tar.gz
+*.zip
+*.tar
+*.gz
+
+# Debug and temporary files
+debug_*.html
+debug_*.py
+*.log
+logs/
+temp/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# ClickHouse specific
+clickhouse
+clickhouse_data/
+clickhouse_*.txt
+clickhouse_*.tgz
+
+# Environment and configuration
+.env*
+*.local
+config.json
+
+# Development and utility scripts
+import_*.sh
+setup_*.sh
+restart_*.sh
+query.sh
+insert_*.sh
+start_debug.sh
+
+# Documentation files not needed in repo
+solution_summary.md
+connect.md
+prompts.txt
+
+# Windows-specific files
+*.csvZone.Identifier

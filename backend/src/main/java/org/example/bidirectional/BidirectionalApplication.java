@@ -29,22 +29,45 @@ public class BidirectionalApplication {
      * @param args Command line arguments
      */
     public static void main(String[] args) {
+        System.out.println("!!!!!!!!!! BIDIRECTIONAL APP MAIN START !!!!!!!!!!");
+        System.out.println("!!!!!!!!!! java.io.tmpdir IS: " + System.getProperty("java.io.tmpdir") + " !!!!!!!!!!");
         try {
-            // Log startup information
+            System.out.println("!!!!!!!!!! CHECKPOINT 1 (Before logger.info) !!!!!!!!!!");
             logger.info("Starting ClickHouse-FlatFile-Sync application...");
             logger.info("Java version: {}", System.getProperty("java.version"));
             logger.info("Application arguments: {}", Arrays.toString(args));
             
-            // Configure and start the Spring application
+            System.out.println("!!!!!!!!!! CHECKPOINT 2 (Before new SpringApplication) !!!!!!!!!!");
             SpringApplication app = new SpringApplication(BidirectionalApplication.class);
+            System.out.println("!!!!!!!!!! CHECKPOINT 3 (After new SpringApplication, before setBannerMode) !!!!!!!!!!");
             app.setBannerMode(Banner.Mode.CONSOLE);
             app.addListeners(new ApplicationStartupListener());
             
-            // Start the application
+            System.out.println("!!!!!!!!!! CHECKPOINT 4 (Before app.run) !!!!!!!!!!");
             app.run(args);
+            System.out.println("!!!!!!!!!! CHECKPOINT 5 (After app.run) !!!!!!!!!!"); // This might not be reached if run() is blocking
+
+            // Add this to keep the main thread's context alive if app.run() returns prematurely
+            Thread keepAliveThread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE);
+                    } catch (InterruptedException e) {
+                        // Handle interruption if necessary
+                        System.out.println("!!!!!!!!!! Keep-alive thread interrupted !!!!!!!!!!");
+                        break;
+                    }
+                }
+            });
+            keepAliveThread.setDaemon(false); // Ensure it's a non-daemon thread
+            keepAliveThread.setName("AppKeepAlive");
+            keepAliveThread.start();
+            System.out.println("!!!!!!!!!! Keep-alive thread started !!!!!!!!!!");
             
             logger.info("Application startup completed successfully");
         } catch (Exception e) {
+            System.out.println("!!!!!!!!!! MAIN METHOD EXCEPTION: " + e.getMessage() + " !!!!!!!!!!");
+            e.printStackTrace(System.out);
             logger.error("Application failed to start", e);
             System.exit(1);
         }
@@ -59,6 +82,7 @@ public class BidirectionalApplication {
         
         @Override
         public void onApplicationEvent(ApplicationReadyEvent event) {
+            System.out.println("!!!!!!!!!! CHECKPOINT 6 (ApplicationStartupListener.onApplicationEvent START) !!!!!!!!!!");
             try {
                 Environment env = event.getApplicationContext().getEnvironment();
                 String protocol = env.getProperty("server.ssl.key-store") != null ? "https" : "http";
@@ -89,7 +113,10 @@ public class BidirectionalApplication {
                 
                 // Log application configuration settings
                 logConfigurationSettings(env);
+                System.out.println("!!!!!!!!!! CHECKPOINT 8 (ApplicationStartupListener.onApplicationEvent END) !!!!!!!!!!");
             } catch (Exception e) {
+                System.out.println("!!!!!!!!!! ApplicationStartupListener EXCEPTION: " + e.getMessage() + " !!!!!!!!!!");
+                e.printStackTrace(System.out);
                 startupLogger.error("Error occurred while logging application startup information", e);
             }
         }
@@ -100,6 +127,7 @@ public class BidirectionalApplication {
          * @param env Spring environment
          */
         private void logConfigurationSettings(Environment env) {
+            System.out.println("!!!!!!!!!! CHECKPOINT 7 (ApplicationStartupListener.logConfigurationSettings START) !!!!!!!!!!");
             startupLogger.info("Application Configuration Settings:");
             startupLogger.info("  Database configuration: {}", 
                     maskSensitiveConfig(env.getProperty("spring.datasource.url", "Not configured")));

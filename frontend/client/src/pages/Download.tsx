@@ -71,6 +71,8 @@ export default function DownloadPage() {
     selectedColumns: string[];
   }[]>([]);
   const { toast } = useToast();
+  const [totalRows, setTotalRows] = useState<number | null>(null);
+  const [estimatedFileSize, setEstimatedFileSize] = useState<number | null>(null);
 
   // Form setup
   const form = useForm<FormValues>({
@@ -314,7 +316,6 @@ export default function DownloadPage() {
       // Prepare the joined tables data if using multiple tables
       let joinTablesData = undefined;
       if (useMultipleTables && joinTables.length > 0) {
-        // Filter out any join table that doesn't have all the required fields
         joinTablesData = joinTables
           .filter(jt => jt.tableName && jt.joinCondition)
           .map(jt => ({
@@ -324,12 +325,11 @@ export default function DownloadPage() {
           }));
       }
 
-      // Get all selected columns (from main table and join tables)
+      // Get all selected columns
       let allSelectedColumns = [...selectedColumns];
       if (useMultipleTables && joinTables.length > 0) {
         joinTables.forEach(jt => {
           if (jt.selectedColumns.length > 0) {
-            // Prefix join table columns with table name to avoid ambiguity
             allSelectedColumns = [
               ...allSelectedColumns,
               ...jt.selectedColumns.map(col => `${jt.tableName}.${col}`)
@@ -343,17 +343,44 @@ export default function DownloadPage() {
         tableName: mainTable,
         columns: allSelectedColumns,
         delimiter: form.getValues().delimiter,
-        joinTables: joinTablesData
+        joinTables: joinTablesData,
+        limit: 100 // Explicitly set limit to 100 rows for preview
       };
 
+      // Get preview data
       const result = await queryWithSelectedColumns(queryConfig);
       setQueryResult(result);
       setPreviewDialogOpen(true);
+
+      // Get total row count
+      const countConfig = {
+        ...queryConfig,
+        columns: ['COUNT(*)'],
+        limit: undefined // No limit for count query
+      };
+
+      const countResult = await queryWithSelectedColumns(countConfig);
+      
+      if (countResult.rows && countResult.rows.length > 0) {
+        const count = parseInt(countResult.rows[0][0], 10);
+        if (!isNaN(count)) {
+          setTotalRows(count);
+          // Estimate file size (rough estimate: average row size * number of rows)
+          const avgRowSize = 100; // Assume average row size of 100 bytes
+          setEstimatedFileSize(count * avgRowSize);
+        } else {
+          console.error('Invalid count value:', countResult.rows[0][0]);
+          setTotalRows(null);
+        }
+      } else {
+        console.error('No count result received');
+        setTotalRows(null);
+      }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to execute query');
+      setError(error instanceof Error ? error.message : "Failed to preview data");
       toast({
-        title: "Query Failed",
-        description: error instanceof Error ? error.message : 'Failed to execute query',
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to preview data",
         variant: "destructive",
       });
     } finally {
@@ -436,7 +463,8 @@ export default function DownloadPage() {
         tableName: mainTable,
         columns: allSelectedColumns,
         delimiter: form.getValues().delimiter || ',',
-        joinTables: joinTablesData
+        joinTables: joinTablesData,
+        limit: 10000 // Add a reasonable limit to prevent browser overload
       };
 
       // Track download progress
@@ -884,9 +912,16 @@ export default function DownloadPage() {
           <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
             <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Query Results Preview</DialogTitle>
+                <DialogTitle>Data Preview</DialogTitle>
                 <DialogDescription>
-                  Showing preview of query results
+                  {totalRows && (
+                    <div className="text-sm text-slate-600 mt-2">
+                      <p>Total rows: {totalRows.toLocaleString()}</p>
+                      {estimatedFileSize && (
+                        <p>Estimated file size: {formatBytes(estimatedFileSize)}</p>
+                      )}
+                    </div>
+                  )}
                 </DialogDescription>
               </DialogHeader>
 

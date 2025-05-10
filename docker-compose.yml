@@ -4,11 +4,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_SPRING_BOOT_URL=http://backend:8080/api
+        - VITE_SPRING_BOOT_URL=http://localhost:8080/api
     ports:
       - "5173:80"
     environment:
-      - VITE_SPRING_BOOT_URL=http://backend:8080/api
+      - VITE_SPRING_BOOT_URL=http://localhost:8080/api
     networks:
       - app-network
     depends_on:
@@ -21,38 +21,30 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - CLICKHOUSE_DEFAULT_HOST=clickhouse
+      - SPRING_PROFILES_ACTIVE=default
+      - CLICKHOUSE_DEFAULT_HOST=host.docker.internal
       - CLICKHOUSE_DEFAULT_PORT=8123
       - CLICKHOUSE_DEFAULT_USERNAME=default
-      - CLICKHOUSE_DEFAULT_PASSWORD=clickhouse
-      - CONFIG_FRONTEND=http://frontend:80, http://localhost:5173
-      - JAVA_OPTS=-Dserver.port=8080 -Dserver.servlet.context-path=/api
+      - CLICKHOUSE_DEFAULT_PASSWORD=
+      - CLICKHOUSE_DEFAULT_DATABASE=default
+      - CONFIG_FRONTEND=http://localhost:5173
+      - JAVA_OPTS=-Djava.io.tmpdir=/app/temp -Dserver.port=8080 -Dserver.servlet.context-path=/api -Dlogging.level.org.example.bidirectional=TRACE -Dlogging.level.com.clickhouse=DEBUG -Dlogging.level.org.apache.http=DEBUG -Dcom.clickhouse.client.logging.level=TRACE -Dlogging.level.org.springframework.web=DEBUG
+      - LOGGING_LEVEL_COM_CLICKHOUSE_CLIENT=DEBUG
+      - LOGGING_LEVEL_ORG_EXAMPLE_BIDIRECTIONAL=TRACE
+      - LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB=DEBUG
+      - LOGGING_LEVEL_ORG_APACHE_HTTP=DEBUG
+      - CLICKHOUSE_DEFAULT_CONNECT_TIMEOUT=60000
+      - CLICKHOUSE_DEFAULT_SOCKET_TIMEOUT=300000
     volumes:
       - backend_temp:/app/temp
     networks:
       - app-network
-    depends_on:
-      - clickhouse
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:latest
-    ports:
-      - "8123:8123"  # HTTP interface
-      - "9000:9000"  # Native interface
-    environment:
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=clickhouse
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-    restart: unless-stopped
-    networks:
-      - app-network
-
-volumes:
-  clickhouse_data:
-  backend_temp:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  backend_temp:

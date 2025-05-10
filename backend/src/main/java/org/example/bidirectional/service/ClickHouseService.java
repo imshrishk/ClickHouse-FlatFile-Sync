@@ -114,8 +114,11 @@ public class ClickHouseService {
                     .setUsername(props.getUsername())
                     .compressServerResponse(true)
                     .setDefaultDatabase(props.getDatabase())
-                    .setConnectTimeout(60_000)     // 60 seconds
-                    .setSocketTimeout(60_000);     // 60 seconds
+                    .setConnectTimeout(props.getConnectTimeout())     // Use timeout from config
+                    .setSocketTimeout(props.getSocketTimeout());     // Use timeout from config
+
+            logger.debug("Using connection timeouts: connect={}ms, socket={}ms",
+                    props.getConnectTimeout(), props.getSocketTimeout());
 
             String host = props.getHost();
 
@@ -299,7 +302,8 @@ public class ClickHouseService {
      */
     public List<String> listTables() {
         logger.debug("Listing tables in database: {}", database);
-        List<String> tables = getListFromResponse("SHOW TABLES FROM " + database);
+        String query = "SHOW TABLES FROM " + quote(database);
+        List<String> tables = getListFromResponse(query);
         logger.info("Found {} tables in database {}", tables.size(), database);
         return tables;
     }
@@ -631,7 +635,7 @@ public class ClickHouseService {
 
     /**
      * Queries selected columns from a table, optionally with joins.
-     * Returns a preview of up to 100 rows for UI display.
+     * Returns a preview of rows for UI display.
      * 
      * <p>This method is designed for generating data previews and supports:</p>
      * <ul>
@@ -647,6 +651,7 @@ public class ClickHouseService {
      * @param columns List of column names to select
      * @param joins List of JoinTable objects defining the joins
      * @param delimiter The delimiter to use in the CSV output
+     * @param limit Maximum number of rows to return (default 100 if null)
      * @return List of String arrays representing rows (including header row)
      * @throws Exception if query execution fails
      */
@@ -654,13 +659,29 @@ public class ClickHouseService {
             String tableName,
             List<String> columns,
             List<JoinTable> joins,
-            String delimiter
+            String delimiter,
+            Integer limit
     ) throws Exception {
         try {
-            logger.info("Querying selected columns from table {} (preview)", tableName);
-            String sql = getJoinedQuery(tableName, columns, joins);
+            int rowLimit = (limit != null && limit > 0) ? limit : 100; // Default to 100 if limit is null or invalid
+            logger.info("Querying selected columns from table {} (preview), limit: {}", tableName, rowLimit);
 
-            return fetchDataHelper(sql + " LIMIT 100");
+            // Special handling for COUNT(*)
+            if (columns != null && columns.size() == 1) {
+                String col = columns.get(0).replace("`", "").replace("\"", "").trim();
+                if (col.equalsIgnoreCase("COUNT(*)") || col.equalsIgnoreCase(tableName + ".COUNT(*)")) {
+                    String sql = String.format("SELECT COUNT(*) FROM `%s`", tableName);
+                    List<String[]> result = fetchDataHelper(sql);
+                    // Add header row for consistency
+                    List<String[]> withHeader = new java.util.ArrayList<>();
+                    withHeader.add(new String[]{"COUNT(*)"});
+                    withHeader.addAll(result);
+                    return withHeader;
+                }
+            }
+
+            String sql = getJoinedQuery(tableName, columns, joins);
+            return fetchDataHelper(sql + " LIMIT " + rowLimit);
         } catch (Exception e) {
             logger.error("Failed to query selected columns from table {}: {}", tableName, e.getMessage(), e);
             throw new Exception("Failed to query selected columns: " + e.getMessage(), e);
@@ -704,7 +725,14 @@ public class ClickHouseService {
         // Use CSVWithNames by default if not specified
         ClickHouseFormat clickHouseFormat;
         if (format == null || format.trim().isEmpty()) {
-            clickHouseFormat = ClickHouseFormat.CSVWithNames;
+            // Check if the SQL already includes a FORMAT clause
+            if (sql.toUpperCase().contains("FORMAT ")) {
+                // Leave format as null to use the one in SQL
+                clickHouseFormat = null;
+            } else {
+                // Default to CSVWithNames if no format in SQL or parameter
+                clickHouseFormat = ClickHouseFormat.CSVWithNames;
+            }
         } else {
             try {
                 clickHouseFormat = ClickHouseFormat.valueOf(format);
@@ -714,7 +742,10 @@ public class ClickHouseService {
             }
         }
         
-        QuerySettings settings = new QuerySettings().setFormat(clickHouseFormat);
+        QuerySettings settings = new QuerySettings();
+        if (clickHouseFormat != null) {
+            settings.setFormat(clickHouseFormat);
+        }
         
         try {
             Future<QueryResponse> response = client.query(sql, settings);

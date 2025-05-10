@@ -24,6 +24,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.clickhouse.client.api.insert.InsertResponse;
+import com.clickhouse.client.api.DataStreamWriter;
+
 /**
  * Unit tests for the IngestionService class.
  * Uses mocks to isolate the IngestionService from actual database operations.
@@ -39,6 +42,9 @@ class IngestionServiceTest {
 
     @Mock
     private QueryResponse mockQueryResponse;
+
+    @Mock
+    private InsertResponse mockInsertResponse;
 
     private IngestionService ingestionService;
     private static final String CSV_CONTENT = "id,name,email\n1,John Doe,john@example.com\n2,Jane Smith,jane@example.com";
@@ -128,11 +134,15 @@ class IngestionServiceTest {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(CSV_CONTENT.getBytes(StandardCharsets.UTF_8));
         
         when(mockClickHouseService.getTotalRows(tableName)).thenReturn(0L).thenReturn(2L);
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        
+        CompletableFuture<InsertResponse> insertFuture = CompletableFuture.completedFuture(mockInsertResponse);
+        CompletableFuture<QueryResponse> queryFuture = CompletableFuture.completedFuture(mockQueryResponse);
         
         when(mockClient.insert(
                 anyString(), any(InputStream.class), any(ClickHouseFormat.class), any(InsertSettings.class)))
-                .thenReturn(future);
+                .thenReturn(insertFuture);
+        when(mockClient.query(anyString())).thenReturn(queryFuture);
         
         // When
         long result = ingestionService.ingestDataFromStream(0, tableName, headers, ",", inputStream);
@@ -153,11 +163,15 @@ class IngestionServiceTest {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(CSV_CONTENT.getBytes(StandardCharsets.UTF_8));
         
         when(mockClickHouseService.getTotalRows(tableName)).thenReturn(0L).thenReturn(2L);
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        
+        CompletableFuture<InsertResponse> insertFuture = CompletableFuture.completedFuture(mockInsertResponse);
+        CompletableFuture<QueryResponse> queryFuture = CompletableFuture.completedFuture(mockQueryResponse);
         
         when(mockClient.insert(
                 anyString(), any(InputStream.class), any(ClickHouseFormat.class), any(InsertSettings.class)))
-                .thenReturn(future);
+                .thenReturn(insertFuture);
+        when(mockClient.query(anyString())).thenReturn(queryFuture);
         
         // When
         long result = ingestionService.ingestDataFromStream(3, tableName, headers, ",", inputStream);
@@ -178,11 +192,15 @@ class IngestionServiceTest {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(CSV_CONTENT.getBytes(StandardCharsets.UTF_8));
         
         when(mockClickHouseService.getTotalRows(tableName)).thenReturn(0L).thenReturn(2L);
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        
+        CompletableFuture<InsertResponse> insertFuture = CompletableFuture.completedFuture(mockInsertResponse);
+        CompletableFuture<QueryResponse> queryFuture = CompletableFuture.completedFuture(mockQueryResponse);
         
         when(mockClient.insert(
                 anyString(), any(DataStreamWriter.class), any(ClickHouseFormat.class), any(InsertSettings.class)))
-                .thenReturn(future);
+                .thenReturn(insertFuture);
+        when(mockClient.query(anyString())).thenReturn(queryFuture);
         
         // When
         long result = ingestionService.ingestDataFromStream(3, tableName, headers, ",", inputStream);
@@ -299,7 +317,7 @@ class IngestionServiceTest {
         
         ByteArrayInputStream responseStream = new ByteArrayInputStream(CSV_CONTENT.getBytes(StandardCharsets.UTF_8));
         when(mockQueryResponse.getInputStream()).thenReturn(responseStream);
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
         when(mockClient.query(anyString())).thenReturn(future);
         
         // When
@@ -339,7 +357,7 @@ class IngestionServiceTest {
         String pipeContent = "id|name\n1|John Doe\n2|Jane Smith";
         ByteArrayInputStream responseStream = new ByteArrayInputStream(pipeContent.getBytes(StandardCharsets.UTF_8));
         when(mockQueryResponse.getInputStream()).thenReturn(responseStream);
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
         when(mockClient.query(anyString())).thenReturn(future);
         
         // When
@@ -374,7 +392,7 @@ class IngestionServiceTest {
         
         ByteArrayInputStream responseStream = new ByteArrayInputStream(CSV_CONTENT.getBytes(StandardCharsets.UTF_8));
         when(mockQueryResponse.getInputStream()).thenReturn(responseStream);
-        Future<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
+        CompletableFuture<QueryResponse> future = CompletableFuture.completedFuture(mockQueryResponse);
         when(mockClient.query(anyString())).thenReturn(future);
         
         // When

@@ -6,6 +6,11 @@ server:
     mime-types: text/html,text/css,application/javascript,application/json
   servlet:
     context-path: /api
+  tomcat:
+    max-http-form-post-size: -1
+    max-swallow-size: -1
+    connection-timeout: 300000
+    keep-alive-timeout: 120000
 
 # Spring configuration
 spring:
@@ -17,34 +22,54 @@ spring:
     default-property-inclusion: non_null
   servlet:
     multipart:
-      max-file-size: 2GB
-      max-request-size: 2GB
+      max-file-size: 10GB
+      max-request-size: 10GB
+      file-size-threshold: 100MB
+      enabled: true
+      resolve-lazily: true
 
 # ClickHouse default connection settings
 clickhouse:
   default:
-    host: localhost
+    host: host.docker.internal
     port: 8123
     protocol: http
-    database: default
+    database: uk
     username: default
-    password: ""
+    password: default
+    auth-type: basic
+    connect-timeout: 60000
     socket-timeout: 300000
-    connect-timeout: 10000
 
 # File storage configuration
 file:
   upload:
     temp-dir: ./temp
-    max-size: 2GB
+    max-size: 10GB
+    chunk-size: 10MB
+    streaming-enabled: true
 
 # Logging configuration
 logging:
   level:
     root: INFO
-    org.example.bidirectional: INFO
-    org.springframework: INFO
-  file:
-    name: ./logs/application.log
-    max-size: 10MB
-    max-history: 10
+    org.example.bidirectional: DEBUG
+    org.example.bidirectional.service: TRACE
+    org.example.bidirectional.controller: TRACE
+    org.springframework.web.client: DEBUG
+    com.clickhouse.client: DEBUG
+    org.apache.http: DEBUG
+#  file:
+#    name: ./logs/application.log
+#    max-size: 100MB
+#    max-history: 10
+    
+# Configuring additional network/request debugging
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always

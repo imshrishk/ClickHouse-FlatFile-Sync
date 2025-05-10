@@ -1,28 +1,50 @@
 package org.example.bidirectional.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import jakarta.annotation.PostConstruct;
+import java.util.Arrays;
+import java.util.List;
+
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
-    @Value("${config.frontend}")
-    private String frontendOrigin;
 
+    private static final Logger logger = LoggerFactory.getLogger(WebConfig.class);
+    
+    @Value("${config.frontend}")
+    private String frontendUrl;
+    
+    @PostConstruct
+    public void init() {
+        logger.info("WebConfig initialized with frontend URLs: {}", frontendUrl);
+    }
+    
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        String[] origins = frontendOrigin.split(",\\s*");
+        logger.info("Configuring CORS mappings");
         
-        // Log the configured origins
-        System.out.println("Configuring CORS for origins: " + String.join(", ", origins));
+        // Split the frontend URL by comma and trim each value
+        String[] origins = frontendUrl.split(",");
+        for (int i = 0; i < origins.length; i++) {
+            origins[i] = origins[i].trim();
+        }
+        
+        logger.info("Configured CORS with origins: {}", Arrays.toString(origins));
         
         registry.addMapping("/**")
-                .allowedOrigins(origins) // Use the array of origins from application.properties
+                .allowedOrigins(origins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders("Content-Disposition", "Content-Length", "X-Line-Count")
                 .allowCredentials(true)
-                .maxAge(3600); // 1 hour
+                .maxAge(3600);
     }
 }

@@ -5,6 +5,8 @@ import org.example.bidirectional.service.ClickHouseService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,13 +20,14 @@ import java.util.*;
  */
 @RestController
 public class SimpleDownloadController {
+    private static final Logger logger = LoggerFactory.getLogger(SimpleDownloadController.class);
 
     @Value("${config.frontend:http://localhost:5173}")
     private String frontendUrl;
     
     @PostConstruct
     public void init() {
-        System.out.println("SimpleDownloadController initialized - Frontend URL: " + frontendUrl);
+        logger.info("SimpleDownloadController initialized - Frontend URL: {}", frontendUrl);
     }
 
     /**
@@ -32,45 +35,47 @@ public class SimpleDownloadController {
      * Downloads data from the uk_price_paid table by default or a table specified in the request parameter
      */
     @GetMapping("/direct-download")
-    public void directDownload(HttpServletRequest request, HttpServletResponse response) {
-        System.out.println("Direct download endpoint called - Retrieving real data from ClickHouse");
+    public void directDownload(
+            @RequestParam(value = "table", defaultValue = "uk_price_paid") String tableName,
+            @RequestParam(value = "limit", defaultValue = "1000") int limit,
+            HttpServletResponse response) throws IOException {
+        
+        logger.info("Direct download requested for table: {}, limit: {}", tableName, limit);
         
         try {
-            // Determine which table to download from based on request parameter or use default
-            String tableName = request.getParameter("table");
-            if (tableName == null || tableName.trim().isEmpty()) {
-                tableName = "uk_price_paid";
-            }
+            // Configure connection
+            ConnectionConfig config = new ConnectionConfig();
+            config.setHost("host.docker.internal");
+            config.setPort(8123);
+            config.setProtocol("http");
+            config.setDatabase("uk");
+            config.setUsername("default");
+            config.setPassword("default");
+            config.setAuthType("password");
             
-            // Create connection config
-            ConnectionConfig connectionConfig = new ConnectionConfig();
-            connectionConfig.setProtocol("http");
-            connectionConfig.setHost("clickhouse");
-            connectionConfig.setPort(8123);
-            connectionConfig.setUsername("default");
-            connectionConfig.setPassword("clickhouse");
-            connectionConfig.setDatabase("uk");
-            connectionConfig.setAuthType("password");
+            // Create ClickHouse service
+            ClickHouseService clickHouseService = new ClickHouseService(config);
             
-            // Initialize service
-            ClickHouseService clickHouseService = new ClickHouseService(connectionConfig);
-            
-            // Set headers for the response
-            setupResponseHeaders(response, tableName + "_data.csv");
+            // Set response headers
+            response.setContentType("text/csv");
+            response.setHeader("Content-Disposition", "attachment; filename=" + tableName + ".csv");
             
             // Execute query and stream results
-            try (OutputStream outputStream = response.getOutputStream()) {
-                String query = "SELECT * FROM " + tableName + " FORMAT CSVWithNames";
-                System.out.println("Executing query: " + query);
-                clickHouseService.executeQueryToOutputStream(query, outputStream, "");
-                
-                outputStream.flush();
-                System.out.println("Successfully sent real ClickHouse data from table: " + tableName);
+            String query = String.format("SELECT * FROM %s LIMIT %d FORMAT CSVWithNames", tableName, limit);
+            logger.info("Executing query: {}", query);
+            
+            try (OutputStream out = response.getOutputStream()) {
+                clickHouseService.executeQueryToOutputStream(query, out, "");
             }
+            
+            logger.info("Download completed successfully");
         } catch (Exception e) {
-            System.err.println("Error in direct download: " + e.getMessage());
-            e.printStackTrace();
-            sendErrorResponse(response, e.getMessage());
+            logger.error("Download failed: {}", e.getMessage(), e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.setContentType("application/json");
+            try (PrintWriter writer = response.getWriter()) {
+                writer.write("{\"error\": \"" + e.getMessage() + "\"}");
+            }
         }
     }
     

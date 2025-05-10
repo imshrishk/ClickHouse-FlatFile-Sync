@@ -14,7 +14,7 @@
 
 ## 📋 Overview
 
-ClickHouse-FlatFile-Sync is a data integration tool designed to allows data transfer between ClickHouse databases and flat files (primarily CSV). Built with a modern tech stack and optimized for performance, this application provides an intuitive interface for database administrators, data engineers, and analysts to move data efficiently between different storage formats.
+ClickHouse-FlatFile-Sync is a data integration tool designed to allow bidirectional data transfer between ClickHouse databases and flat files (primarily CSV). Built with a modern tech stack and optimized for performance, this application provides an intuitive interface for database administrators, data engineers, and analysts to move data efficiently between different storage formats.
 
 Whether you need to export query results with JOINs across multiple tables to CSV files or ingest data from CSV files into ClickHouse with proper column mapping and type detection, ClickHouse-FlatFile-Sync streamlines the entire process through an easy-to-use web interface.
 
@@ -26,12 +26,14 @@ Whether you need to export query results with JOINs across multiple tables to CS
   - Column selection with custom ordering
   - Custom delimiter configuration
   - Optimized streaming for large datasets
+  - Real-time progress tracking
 
 - **Flat File → ClickHouse**: Import CSV data into new or existing ClickHouse tables
   - Automatic schema detection and data type inference
   - Column mapping with validation
   - Batch processing with progress monitoring
-  - Support for various delimiters
+  - Support for various delimiters including tabs
+  - Handling of quoted fields in complex CSV formats
 
 ### Advanced Connection Management
 - **Multiple Authentication Methods**:
@@ -43,33 +45,52 @@ Whether you need to export query results with JOINs across multiple tables to CS
   - Ping functionality to verify connectivity
   - Database permissions validation
   - Connection health monitoring
+  - Detailed error reporting
 
 ### Intelligent Schema Handling
 - **Automatic Schema Discovery**:
   - Table listing and metadata exploration
   - Column information with data types
   - Primary key detection
+  - Index recommendations
 
 - **Smart Data Type Mapping**:
   - Automatic CSV data type inference
   - ClickHouse-specific type conversion
   - Custom type mapping overrides
+  - Support for complex nested types
 
 ### User Experience
 - **Modern, Responsive UI**:
   - Mobile and desktop friendly design
   - Dark mode support
   - Intuitive workflow with clear visual feedback
+  - Drag-and-drop file uploads
 
 - **Progress Monitoring**:
   - Real-time progress indicators during data transfer
   - Transfer speed metrics
   - Time remaining estimation for large datasets
+  - Detailed operation logs
 
 - **Advanced Error Handling**:
   - Detailed error messages with suggestions
   - Retry mechanisms for transient errors
   - Comprehensive logging and diagnostics
+  - Validation before operations start
+
+### CSV Handling Features
+- **Advanced CSV Preview**:
+  - Support for headerless files with auto-generated column names
+  - Proper handling of tab-delimited files with quoted fields
+  - Custom delimiter detection
+  - Preview of large files with efficient streaming
+
+- **Format Flexibility**:
+  - Support for various CSV dialects
+  - Handling of quoted fields and escape characters
+  - Support for multi-line text within fields
+  - Custom date/time format parsing
 
 ## 💻 Installation
 
@@ -115,7 +136,7 @@ cd ClickHouse-FlatFile-Sync/backend
 java -jar target/bidirectional-0.0.1-SNAPSHOT.jar
 ```
 
-Backend will be available at http://localhost:8080.
+Backend will be available at http://localhost:8080/api.
 
 #### Frontend Setup
 
@@ -145,6 +166,10 @@ server:
   compression:
     enabled: true
     mime-types: text/html,text/css,application/javascript,application/json
+  tomcat:
+    max-http-form-post-size: -1
+    max-swallow-size: -1
+    connection-timeout: 300000
 
 # ClickHouse default connection settings (optional)
 clickhouse:
@@ -155,12 +180,17 @@ clickhouse:
     database: default
     username: default
     password: ""
+    auth-type: basic
+    connect-timeout: 60000
+    socket-timeout: 300000
 
 # File storage configuration
 file:
   upload:
     temp-dir: ./temp
-    max-size: 2GB
+    max-size: 10GB
+    chunk-size: 10MB
+    streaming-enabled: true
 ```
 
 Or via environment variables:
@@ -198,7 +228,7 @@ frontend:
 
 1. **Launch the Application**:
    - Open your browser and navigate to the application URL
-   - For local setup: http://localhost:8080 (or http://localhost:5173 in development mode)
+   - For local setup: http://localhost:5173
 
 2. **Choose Operation Type**:
    - Select "Upload to ClickHouse" (CSV → Database) or
@@ -207,6 +237,7 @@ frontend:
 3. **Database Connection**:
    - Configure ClickHouse connection parameters
    - Test the connection to ensure connectivity
+   - Save connection details for future use
 
 4. **Data Selection and Mapping**:
    - For uploads: Select CSV file, configure delimiter, map columns
@@ -245,6 +276,16 @@ For large file uploads (>1GB):
 3. Consider using tab-delimited files for better performance
 4. For very large files, use the batch import feature to process chunks
 
+#### Working with Headerless CSV Files
+
+For CSV files without headers:
+
+1. Upload your file and select the appropriate delimiter
+2. Uncheck the "Has Header" option in the CSV preview screen
+3. The application will generate column names automatically (Column1, Column2, etc.)
+4. You can rename these columns before proceeding with the import
+5. Map the generated columns to appropriate ClickHouse data types
+
 ## 📚 Documentation
 
 ### API Reference
@@ -261,6 +302,7 @@ The backend provides a RESTful API that can be consumed programmatically:
 | `/api/clickhouse/upload` | POST | Upload CSV to ClickHouse |
 | `/api/clickhouse/download` | POST | Export ClickHouse data to CSV |
 | `/api/clickhouse/types` | POST | Get available data types |
+| `/api/health-test` | GET | Check API health status |
 
 All API endpoints are accessible via the `/api` context path (e.g., `http://localhost:8080/api/clickhouse/test-connection`).
 
@@ -285,12 +327,21 @@ The application follows a modern microservices architecture:
                               +-------------------+
 ```
 
+#### Key Components
+
+- **Frontend**: React 18 with TypeScript, Vite, and modern UI components
+- **Backend**: Spring Boot 3.4 with Java 24
+- **Data Processing**: Custom CSV parsing and ClickHouse integration
+- **API Layer**: RESTful endpoints with streaming support for large files
+- **Security**: CORS configuration and authentication options
+
 ### Security Considerations
 
 - All REST endpoints are protected against CSRF attacks
 - JWT tokens are securely stored and transmitted
 - Password authentication uses bcrypt hashing
 - File uploads are validated for content type and size
+- CORS is properly configured for secure cross-origin requests
 
 ## 🔧 Troubleshooting
 
@@ -305,6 +356,8 @@ The application follows a modern microservices architecture:
 - Check firewall settings
 - Ensure ClickHouse server is running
 - Check network connectivity with `ping` or `telnet`
+- Verify Docker network settings if using containerized setup
+- Check the logs for detailed error messages: `docker-compose logs backend`
 
 #### API Connectivity Issues
 
@@ -317,6 +370,7 @@ The application follows a modern microservices architecture:
 - Confirm proper CORS configuration in both frontend and backend
 - Ensure the Nginx configuration correctly proxies requests to the backend
 - Verify environment variables for frontend API URL: `VITE_SPRING_BOOT_URL=http://backend:8080/api`
+- Use the built-in server health check: `http://localhost:8080/api/health-test`
 
 #### Memory Errors
 
@@ -326,6 +380,9 @@ The application follows a modern microservices architecture:
 - Increase JVM heap size: `java -Xmx4g -jar bidirectional-0.0.1-SNAPSHOT.jar`
 - Enable streaming mode in the UI
 - Process files in smaller batches
+- Adjust the `file.upload.chunk-size` setting in application.yml
+- Use tab-delimited format for better performance with large files
+- For Docker, increase container memory limits in docker-compose.yml
 
 #### Type Conversion Errors
 
@@ -335,6 +392,9 @@ The application follows a modern microservices architecture:
 - Check source data for invalid values
 - Manually specify column types instead of auto-detection
 - Adjust type inference settings in the UI
+- Pre-process problematic columns in your CSV files
+- Check for date format inconsistencies
+- Review logs for specific conversion errors
 
 #### Download Failed: Network Error
 
@@ -361,6 +421,15 @@ The application follows a modern microservices architecture:
 - Use direct streaming from the backend to the client rather than creating temporary files
 - If still facing issues, check network monitor in browser developer tools for specific error codes
 - In Docker environments, ensure sufficient memory is allocated to containers
+- Increase timeout settings in application.yml:
+  ```yaml
+  server:
+    tomcat:
+      connection-timeout: 300000
+  clickhouse:
+    default:
+      socket-timeout: 300000
+  ```
 
 ### Logging
 
@@ -371,8 +440,50 @@ logging:
   level:
     root: INFO
     org.example.bidirectional: DEBUG
+    org.example.bidirectional.service: TRACE
+    com.clickhouse.client: DEBUG
 ```
 
 Log files are located in:
 - Linux/macOS: `./logs/application.log`
 - Windows: `.\logs\application.log`
+- Docker: Access logs via `docker-compose logs backend`
+
+## 🚀 Advanced Features
+
+### CSV Preview for Complex Formats
+
+The application includes specialized handling for complex CSV formats:
+
+- **Headerless Files**: Automatically generates column names for files without headers
+- **Quoted Fields**: Properly handles quoted fields in tab-delimited files
+- **Custom Delimiters**: Supports comma, tab, semicolon, and custom delimiters
+- **Large File Preview**: Efficiently previews large files by processing only the first portion
+
+### Streaming Data Transfer
+
+For large datasets, the application uses streaming to efficiently transfer data:
+
+- **Chunked Processing**: Processes large files in manageable chunks
+- **Memory Optimization**: Minimizes memory usage during large transfers
+- **Progress Tracking**: Provides real-time progress updates during transfers
+- **Resumable Transfers**: Supports resuming interrupted transfers
+
+### Data Type Inference
+
+The application includes smart data type inference for CSV imports:
+
+- **Automatic Detection**: Analyzes sample data to suggest appropriate types
+- **ClickHouse Optimization**: Recommends optimal ClickHouse-specific types
+- **Manual Override**: Allows manual type selection when needed
+- **Validation**: Validates data against selected types before import
+
+## 📈 Performance Tips
+
+- Use tab-delimited format for large files (faster parsing than CSV)
+- Enable streaming mode for files larger than 1GB
+- Use appropriate ClickHouse data types for better query performance
+- For very large datasets, consider using ClickHouse's native format instead of CSV
+- Adjust batch size settings for optimal performance on your hardware
+- Use SSD storage for temporary files during processing
+- Monitor memory usage and adjust JVM settings accordingly
