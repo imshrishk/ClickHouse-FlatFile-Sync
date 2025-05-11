@@ -645,14 +645,14 @@ export default function UploadPage() {
         toast({
           title: "Partial Connectivity",
           description: "Some backend endpoints are not responding correctly, but uploads may still work.",
-          variant: "warning",
+          variant: "default",
         });
         console.warn("Server check details:", serverStatus.details);
       } else {
         toast({
           title: "Connection Warning",
           description: "Backend server connectivity is limited, but uploads may still work.",
-          variant: "warning",
+          variant: "default",
         });
         console.error("Server check details:", serverStatus.details);
       }
@@ -673,7 +673,7 @@ export default function UploadPage() {
           <Button variant="ghost" onClick={() => navigate('/')} className="mr-3 text-slate-600 hover:text-slate-900">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
-          <h2 className="text-2xl font-bold text-slate-900">Upload to ClickHouse</h2>
+          <h2 className="text-2xl font-bold text-foreground">Upload to ClickHouse</h2>
         </div>
 
         <ConnectionForm onSubmit={handleConnectionSubmit} title="Upload to ClickHouse" />
@@ -687,7 +687,7 @@ export default function UploadPage() {
         <Button variant="ghost" onClick={() => setConnectionConfig(null)} className="mr-3 text-slate-600 hover:text-slate-900">
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </Button>
-        <h2 className="text-2xl font-bold text-slate-900">Upload to ClickHouse</h2>
+        <h2 className="text-2xl font-bold text-foreground">Upload to ClickHouse</h2>
       </div>
 
       <Form {...form}>

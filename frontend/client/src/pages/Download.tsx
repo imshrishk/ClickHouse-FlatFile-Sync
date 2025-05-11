@@ -24,8 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   ConnectionConfig,
-  downloadSchema,
-  SelectedColumnsQueryConfig
+  SelectedColumnsQueryConfig as SharedSelectedColumnsQueryConfig
 } from '@shared/schema';
 import ConnectionForm from '@/components/ConnectionForm';
 import ProgressButton from '@/components/ProgressButton';
@@ -34,7 +33,8 @@ import {
   getTables,
   getColumns,
   queryWithSelectedColumns,
-  type ColumnInfo
+  type ColumnInfo,
+  type SelectedColumnsQueryConfig as ClickhouseSelectedColumnsQueryConfig
 } from '@/lib/clickhouse';
 import { useToast } from '@/hooks/use-toast';
 import * as z from 'zod';
@@ -47,6 +47,53 @@ const formSchema = z.object({
 });
 
 type FormValues = z.infer<typeof formSchema>;
+
+// Helper function to parse join condition
+const parseJoinCondition = (condition: string, mainTable: string, joinedTable: string) => {
+  const parts = condition.split('=').map(p => p.trim());
+  if (parts.length !== 2) return { localColumn: '', joinColumn: '' };
+
+  const [left, right] = parts;
+  let localColumn = '';
+  let joinColumn = '';
+
+  if (left.startsWith(mainTable + '.') && right.startsWith(joinedTable + '.')) {
+    localColumn = left.substring(mainTable.length + 1);
+    joinColumn = right.substring(joinedTable.length + 1);
+  } else if (left.startsWith(joinedTable + '.') && right.startsWith(mainTable + '.')) {
+    localColumn = right.substring(mainTable.length + 1);
+    joinColumn = left.substring(joinedTable.length + 1);
+  } else {
+    const leftParts = left.split('.');
+    const rightParts = right.split('.');
+    if (leftParts.length > 1 && rightParts.length > 1) {
+        if (leftParts[0] === mainTable || rightParts[0] === joinedTable) {
+            localColumn = leftParts.slice(1).join('.');
+            joinColumn = rightParts.slice(1).join('.');
+        } else if (rightParts[0] === mainTable || leftParts[0] === joinedTable) {
+            localColumn = rightParts.slice(1).join('.');
+            joinColumn = leftParts.slice(1).join('.');
+        } else {
+            localColumn = leftParts.slice(-1)[0]; 
+            joinColumn = rightParts.slice(-1)[0];
+        }
+    } else {
+        localColumn = left;
+        joinColumn = right;
+    }
+  }
+  return { localColumn, joinColumn };
+};
+
+// Type for the join table structure expected by clickhouse.ts functions
+// This type should ideally match the one in clickhouse.ts more closely or clickhouse.ts should be updated.
+// For now, allowing string for joinType to pass through original values.
+type ClickhouseJoinTableProcessed = {
+  joinTable: string;
+  joinColumn: string;
+  localColumn: string;
+  joinType: string; // Allow any string to pass through the original join type
+};
 
 export default function DownloadPage() {
   const [location, navigate] = useLocation();
@@ -63,7 +110,7 @@ export default function DownloadPage() {
   const [joinTables, setJoinTables] = useState<{
     id: number;
     tableName: string;
-    joinType:
+    joinType: // This is the complex type from Zod/shared schema
     "INNER JOIN" | "LEFT JOIN" | "RIGHT JOIN" | "OUTER JOIN" | "SEMI JOIN"
     | "ANTI JOIN" | "ANY JOIN" | "GLOBAL JOIN" | "ARRAY JOIN";
     joinCondition: string;
@@ -313,52 +360,51 @@ export default function DownloadPage() {
       setIsLoading(true);
       setError(null);
 
-      // Prepare the joined tables data if using multiple tables
-      let joinTablesData = undefined;
+      let joinTablesDataForClickhouse: ClickhouseJoinTableProcessed[] | undefined = undefined;
       if (useMultipleTables && joinTables.length > 0) {
-        joinTablesData = joinTables
-          .filter(jt => jt.tableName && jt.joinCondition)
-          .map(jt => ({
-            tableName: jt.tableName,
-            joinType: jt.joinType,
-            joinCondition: jt.joinCondition,
-          }));
+        joinTablesDataForClickhouse = joinTables
+          .filter(jt => jt.tableName && jt.joinCondition && jt.joinType)
+          .map((jt) => {
+            const { localColumn, joinColumn } = parseJoinCondition(jt.joinCondition, mainTable, jt.tableName);
+            return {
+              joinTable: jt.tableName,
+              joinColumn: joinColumn || '',
+              localColumn: localColumn || '',
+              joinType: jt.joinType, 
+            };
+          });
       }
 
-      // Get all selected columns
       let allSelectedColumns = [...selectedColumns];
       if (useMultipleTables && joinTables.length > 0) {
         joinTables.forEach(jt => {
           if (jt.selectedColumns.length > 0) {
             allSelectedColumns = [
               ...allSelectedColumns,
-              ...jt.selectedColumns.map(col => `${jt.tableName}.${col}`)
+              ...jt.selectedColumns.map(col => col.replace(/"/g, '')) 
             ];
           }
         });
       }
 
-      const queryConfig: SelectedColumnsQueryConfig = {
-        connection: connectionConfig,
+      const queryConfig: ClickhouseSelectedColumnsQueryConfig = {
+        connection: connectionConfig!,
         tableName: mainTable,
         columns: allSelectedColumns,
         delimiter: form.getValues().delimiter,
-        joinTables: joinTablesData,
-        limit: 100 // Explicitly set limit to 100 rows for preview
+        joinTables: joinTablesDataForClickhouse as any,
+        limit: 100
       };
 
-      // Get preview data
       const result = await queryWithSelectedColumns(queryConfig);
       setQueryResult(result);
       setPreviewDialogOpen(true);
 
-      // Get total row count
       const countConfig = {
         ...queryConfig,
         columns: ['COUNT(*)'],
-        limit: undefined // No limit for count query
+        limit: undefined
       };
-
       const countResult = await queryWithSelectedColumns(countConfig);
       
       if (countResult.rows && countResult.rows.length > 0) {
@@ -426,58 +472,52 @@ export default function DownloadPage() {
 
     try {
       setIsLoading(true);
-      // Reset file size and progress if a new download is initiated
       setDownloadedFileSize(undefined);
       setDownloadProgress(undefined);
       setDownloadedLineCount(undefined);
 
-      // Prepare the joined tables data if using multiple tables
-      let joinTablesData = undefined;
+      let joinTablesDataForClickhouse: ClickhouseJoinTableProcessed[] | undefined = undefined;
       if (useMultipleTables && joinTables.length > 0) {
-        // Filter out any join table that doesn't have all the required fields
-        joinTablesData = joinTables
-          .filter(jt => jt.tableName && jt.joinCondition)
-          .map(jt => ({
-            tableName: jt.tableName,
-            joinType: jt.joinType,
-            joinCondition: jt.joinCondition,
-          }));
+        joinTablesDataForClickhouse = joinTables
+          .filter(jt => jt.tableName && jt.joinCondition && jt.joinType)
+          .map((jt) => {
+            const { localColumn, joinColumn } = parseJoinCondition(jt.joinCondition, mainTable, jt.tableName);
+            return {
+              joinTable: jt.tableName,
+              joinColumn: joinColumn || '',
+              localColumn: localColumn || '',
+              joinType: jt.joinType, 
+            };
+          });
       }
 
-      // Get all selected columns (from main table and join tables)
       let allSelectedColumns = [...selectedColumns];
       if (useMultipleTables && joinTables.length > 0) {
         joinTables.forEach(jt => {
           if (jt.selectedColumns.length > 0) {
-            // Prefix join table columns with table name to avoid ambiguity
             allSelectedColumns = [
               ...allSelectedColumns,
-              ...jt.selectedColumns.map(col => `${jt.tableName}.${col}`)
+              ...jt.selectedColumns.map(col => col.replace(/"/g, '')) 
             ];
           }
         });
       }
 
-      const downloadConfig: SelectedColumnsQueryConfig = {
-        connection: connectionConfig,
+      const downloadConfig: ClickhouseSelectedColumnsQueryConfig = {
+        connection: connectionConfig!,
         tableName: mainTable,
         columns: allSelectedColumns,
         delimiter: form.getValues().delimiter || ',',
-        joinTables: joinTablesData,
-        limit: 10000 // Add a reasonable limit to prevent browser overload
+        joinTables: joinTablesDataForClickhouse as any,
+        limit: form.getValues().useMultipleTables ? undefined : 10000000 
       };
 
-      // Track download progress
       const result = await downloadData(
         downloadConfig,
-        (progress) => {
-          // Update progress state when progress callback is called
-          setDownloadProgress(progress);
-        },
+        (progress) => { setDownloadProgress(progress); },
         setDownloadedFileSize
       );
 
-      // Set file size and name only after download completes
       setDownloadedFileSize(result.size);
       setDownloadedFileName(result.filename);
       setDownloadedLineCount(result.lines);
@@ -494,7 +534,6 @@ export default function DownloadPage() {
       });
     } finally {
       setIsLoading(false);
-      // Clear progress when complete
       setDownloadProgress(undefined);
     }
   };
@@ -506,7 +545,7 @@ export default function DownloadPage() {
           <Button variant="ghost" onClick={() => navigate('/')} className="mr-3 text-slate-600 hover:text-slate-900">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
-          <h2 className="text-2xl font-bold text-slate-900">Download from ClickHouse</h2>
+          <h2 className="text-2xl font-bold text-foreground">Download from ClickHouse</h2>
         </div>
 
         <ConnectionForm onSubmit={handleConnectionSubmit} title="Download from ClickHouse" />
@@ -520,7 +559,7 @@ export default function DownloadPage() {
         <Button variant="ghost" onClick={() => setConnectionConfig(null)} className="mr-3 text-slate-600 hover:text-slate-900">
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </Button>
-        <h2 className="text-2xl font-bold text-slate-900">Download from ClickHouse</h2>
+        <h2 className="text-2xl font-bold text-foreground">Download from ClickHouse</h2>
       </div>
 
       <Form {...form}>

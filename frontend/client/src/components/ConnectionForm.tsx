@@ -70,8 +70,8 @@ export default function ConnectionForm({ onSubmit, title }: ConnectionFormProps)
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="bg-white shadow-md rounded-lg border border-slate-200 p-6 mb-8">
-        <h3 className="text-lg font-semibold mb-4 text-slate-800">Connection Configuration</h3>
+      <div className="bg-card shadow-md rounded-lg border border-slate-200 p-6 mb-8">
+        <h3 className="text-lg font-semibold mb-4 text-card-foreground">Connection Configuration</h3>
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
